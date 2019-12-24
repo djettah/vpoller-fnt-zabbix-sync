@@ -40,7 +40,7 @@ logging:
       formatter: simple
       filename: <defined_in_code.log>
   loggers:
-    vfz_sync:
+    vfzsync:
       level: DEBUG
       handlers: [console, file]
       propagate: no
