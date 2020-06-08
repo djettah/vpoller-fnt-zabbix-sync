@@ -6,8 +6,10 @@
 *_test*
 *.dev*
 *.test*
+*.prod*
 log
 *test*
 *.ipynb
 .DS_Store
 __pycache__
+config/vfzsync.yaml

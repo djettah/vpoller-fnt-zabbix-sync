@@ -6,7 +6,8 @@ if [ "${DEBUG_MODE}" == "true" ]; then
     set -o xtrace
 fi
 
-cd /home/app/vfzsync
+# cd /home/app/vfzsync
+cd /home/app
 
 if [ ! -d ./config ]; then
     mkdir config
@@ -28,6 +29,8 @@ general:
 vpoller:
   endpoint: ${VPOLLER_ENDPOINT}
   vc_host: ${VPOLLER_VC_HOST}
+  retries: ${VPOLLER_RETRIES}
+  timeout: ${VPOLLER_TIMEOUT}
 
 zabbix:
   url: ${ZABBIX_URL}
@@ -41,6 +44,17 @@ command:
   url: ${COMMAND_URL}
   username: ${COMMAND_USERNAME}
   password: ${COMMAND_PASSWORD}
+
+mail:
+  server: ${MAIL_SERVER}
+  port: ${MAIL_PORT}
+  use_ssl: ${MAIL_USE_SSL}
+  use_tls: ${MAIL_USE_TLS}
+  username: ${MAIL_USERNAME}
+  password: ${MAIL_PASSWORD}
+  sender: ${MAIL_SENDER}
+  recipient: ${MAIL_RECIPIENT}
+  subject: ${MAIL_SUBJECT}
 
 logging:
   version: 1
@@ -140,11 +154,11 @@ echo Staring in ${MODE} mode, env ${ENV}
 
 if [ ${MODE} == 'web' ]; then
   if [ ${ENV} == 'prod' ]; then
-    exec gunicorn -b :5000 --access-logfile - --error-logfile - vfz_webapp:app
+    exec $HOME/.poetry/bin/poetry run gunicorn -b :5000 --timeout 3600 --threads 1 --access-logfile - --error-logfile - vfzsync.vfz_webapp:app
   fi
   if [ ${ENV} == 'dev' ]; then
     export FLASK_APP=vfz_webapp.py
-    exec python -m flask run --host=0.0.0.0
+    exec $HOME/.poetry/bin/poetry run python -m flask run --host=0.0.0.0
   fi
 fi
 

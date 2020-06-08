@@ -1,0 +1,100 @@
+general:
+  debug: false
+  dryrun: false
+  trace: false
+  loglevel: logging.DEBUG
+  interval: 600
+  loops: -1
+
+vpoller:
+  endpoint: tcp://address:port
+  vc_host: address
+  retries: 5
+  timeout: 20000
+
+zabbix:
+  url: https://address
+  username: username
+  password: password
+  hostgroup: FNT Command
+  template: Template FNT Virtual Server
+  proxy: zabbix-proxy-sqlite3
+
+command:
+  url: http://address:port
+  username: username
+  password: password
+
+mail:
+  server: smtp.gmail.com
+  port: 465
+  use_ssl: true
+  use_tls: false
+  username: username@gmail.com
+  password: password
+  sender: from@gmail.com
+  recipient: to@gmail.com
+  subject: Subject
+
+logging:
+  version: 1
+  formatters:
+    simple:
+      format: '%(asctime)s:%(module)s:%(name)s:%(levelname)s:%(message)s'
+    default:
+      format: '[%(asctime)s] %(levelname)s in %(module)s: %(message)s'
+  handlers:
+    console:
+      class: logging.StreamHandler
+      level: DEBUG
+      formatter: simple
+      stream: ext://sys.stderr
+    file:
+      class: logging.FileHandler
+      level: ERROR
+      formatter: simple
+      filename: <defined_in_code.log>
+    wsgi:
+      class: logging.StreamHandler
+      stream: ext://flask.logging.wsgi_errors_stream
+      formatter: simple
+  loggers:
+    vfzsync:
+      level: DEBUG
+      handlers: [file, wsgi]
+      propagate: no
+    vfzlib:
+      level: DEBUG
+      handlers: [console, file, wsgi]
+      propagate: no
+    __main__:
+      level: DEBUG
+      handlers: [console, file]
+      propagate: no
+    werkzeug:
+      level: WARN
+      handlers: [wsgi]
+      propagate: no
+    gunicorn:
+      level: DEBUG
+      handlers: [wsgi]
+      propagate: no
+    gunicorn.access:
+      level: WARN
+      handlers: [wsgi]
+      propagate: no
+    gunicorn.error:
+      level: INFO
+      handlers: [wsgi]
+      propagate: no
+    pyzabbix:
+      level: INFO
+      handlers: [file, wsgi]
+      propagate: no
+    requests.packages.urllib3:
+      level: WARN
+      handlers: [file, wsgi]
+      propagate: yes
+  root:
+    level: WARN
+    handlers: [console, file, wsgi]

@@ -4,14 +4,12 @@ VFZ Sync
 {% endblock %}
 {% block scripts %}
     <script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
-    <script type=text/javascript> $SCRIPT_ROOT={{ request.script_root|tojson|safe }}; </script>
     <script type=text/javascript>
       $(function() {
-        $('a#sync').bind('click', function() {
-          $('#result').attr('class', "")
+        $('a').bind('click', function() {
+          $('#result').attr('class', "");
           $("#result").text("Syncing..");
-          // $.getJSON($SCRIPT_ROOT + '/api/sync/run', {
-          $.getJSON('api/sync/run', {
+          $.getJSON('api/sync/run?mode=' + event.target.id, {
           }, function(data) {
             if (data.success) {
               $("#result").text("Synchronization succeeded.");
@@ -30,5 +28,6 @@ VFZ Sync
 {% block content %}
     <h1>VFZ Sync</h1>
     <span id=result>Press Sync to start</span>
-    <p><a href=# id=sync>Sync</a>
+    <p><a href=# id=vpoller-fnt>Sync vpoller-fnt</a>
+    <p><a href=# id=fnt-zabbix>Sync fnt-zabbix</a>
 {% endblock %}

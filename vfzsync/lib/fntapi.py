@@ -2,6 +2,7 @@ import json
 import sys
 
 import requests
+import urllib3
 
 from debugtoolkit.debugtoolkit import deflogger, dry_request, init_logger, measure
 
@@ -21,7 +22,8 @@ class FNTCommandAPI:
         self.authorized = False
         self.auth(url, username, password)
 
-    def send_request(self, method, payload=None, headers=None, params=None, exit=True):
+    def send_request(self, method, payload=None, headers=None, params=None, exit=False):
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         fnt_api_endpoint = f"{self.fnt_api_url}/{method}"
         if not params and self.authorized:
             params = {"sessionId": self.session_id}
@@ -30,14 +32,17 @@ class FNTCommandAPI:
             headers = {"Content-Type": "application/json", "Accept": "application/json"}
         try:
             response = requests.post(
-                url=fnt_api_endpoint, data=json.dumps(payload), headers=headers, params=params, timeout=5,
+                url=fnt_api_endpoint, data=json.dumps(payload), headers=headers, params=params, timeout=5, verify=False
             )
-        except requests.RequestException:
+        except requests.RequestException as e:
             logger.exception(f"Failed to send request ({fnt_api_endpoint=})")
             if exit:
                 sys.exit(3)
+            else:
+                raise(e)
 
         if response:
+            # print('response: \n' + response.text)
             if response.json()["status"]["success"]:
                 return response.json()
             else:
@@ -55,12 +60,15 @@ class FNTCommandAPI:
             "userGroupName": "Adm|G",
         }
         method = "businessGateway/login"
-        response = self.send_request(method=method, payload=payload)
-        if response and response["status"]["success"]:
-            self.session_id = response["sessionId"]
-            self.authorized = True
-            return True
-        else:
+        try:
+            response = self.send_request(method=method, payload=payload)
+            if response and response["status"]["success"]:
+                self.session_id = response["sessionId"]
+                self.authorized = True
+                return True
+            else:
+                raise FNTNotAuthorized("Command Unauthorized")
+        except Exception as e:
             raise FNTNotAuthorized("Command Unauthorized")
 
     # def check_auth():
@@ -68,14 +76,20 @@ class FNTCommandAPI:
     #         logger.warning(f"Not authorized to execute {method} method")
     #         return False
 
-    def get_entities(self, entity_type, entity_custom=False, restrictions={}, attributes=[]):
-        if entity_custom:
-            method = f"entity/custom/{entity_type}/query"
+    def get_entities(self, entity_type, entity_custom=False, restrictions={}, attributes=[], last_deleted=False):
+        if not last_deleted:
+            method = 'query'
         else:
-            method = f"entity/{entity_type}/query"
+            method = 'queryLastDeleted'
+
+        if entity_custom:
+            method_uri = f"entity/custom/{entity_type}/{method}"
+        else:
+            method_uri = f"entity/{entity_type}/{method}"
+
         payload = {"restrictions": restrictions, "returnAttributes": attributes}
 
-        response = self.send_request(method=method, payload=payload)
+        response = self.send_request(method=method_uri, payload=payload)
         return response["returnData"]
 
     def get_related_entities(self, entity_type, entity_elid, relation_type, restrictions={}, attributes=[]):

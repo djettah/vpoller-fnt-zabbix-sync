@@ -1,6 +1,4 @@
-# syntax = docker/dockerfile:1.0-experimental
-
-FROM python:3.8
+FROM python:3.8-slim
 
 EXPOSE 5000
 
@@ -9,41 +7,40 @@ ENV PYTHONDONTWRITEBYTECODE 1
 # This keeps Python from buffering stdin/stdout
 ENV PYTHONUNBUFFERED 1
 
-# #dev
-# ARG APT_FLAGS_COMMON="-y"
-# ARG APT_FLAGS_PERSISTENT="${APT_FLAGS_COMMON} --no-install-recommends"
-# ARG APT_FLAGS_DEV="${APT_FLAGS_COMMON} --no-install-recommends"
-# RUN set -eux && \
-#     apt-get ${APT_FLAGS_COMMON} update && \
-#     DEBIAN_FRONTEND=noninteractive apt-get ${APT_FLAGS_DEV} install \
-#     vim && \
-#     apt-get ${APT_FLAGS_COMMON} autoremove && \
-#     rm -rf /var/lib/apt/lists/*
-
+ARG APT_FLAGS_COMMON="-y"
+ARG APT_FLAGS_PERSISTENT="${APT_FLAGS_COMMON} --no-install-recommends"
+ARG APT_FLAGS_DEV="${APT_FLAGS_COMMON} --no-install-recommends"
+RUN set -eux && \
+    apt-get ${APT_FLAGS_COMMON} update && \
+    DEBIAN_FRONTEND=noninteractive apt-get ${APT_FLAGS_DEV} install \
+    curl && \
+    apt-get ${APT_FLAGS_COMMON} autoremove && \
+    rm -rf /var/lib/apt/lists/*
 
 RUN useradd --create-home app
+# RUN addgroup -S app && adduser -S app -G app
+USER app
 ENV APP_HOME=/home/app
 WORKDIR $APP_HOME
 
-COPY pyproject.toml .
-COPY poetry.lock .
-COPY debugtoolkit/*.py vfzsync/debugtoolkit/
-COPY vfzsync/vfz_*.py vfzsync/
-COPY vfzsync/__*.py vfzsync/
-COPY vfzsync/lib/*.py vfzsync/lib/
-RUN --mount=type=cache,target=/home/app/.cache/pip python3 -m pip install .
-# flask
-COPY vfzsync/static vfzsync/static
-COPY vfzsync/templates vfzsync/templates
-# gunicorn
-COPY vfzsync/static /usr/local/lib/python3.8/site-packages/vfzsync/static
-COPY vfzsync/templates /usr/local/lib/python3.8/site-packages/vfzsync/templates
-COPY entrypoint.sh ./entrypoint.sh
+# setup environment
+RUN curl -ksSL https://raw.githubusercontent.com/sdispater/poetry/master/get-poetry.py | python
+# RUN wget -O - https://raw.githubusercontent.com/sdispater/poetry/master/get-poetry.py | python
+COPY --chown=app:app poetry.lock pyproject.toml ./
+RUN $APP_HOME/.poetry/bin/poetry install --no-dev --no-root
 
-RUN chown -R app:app $APP_HOME/
+# RUN --mount=type=cache,target=/home/app/.cache/pip python3 -m pip install .
+
+# copy app
+COPY --chown=app:app debugtoolkit/*.py debugtoolkit/
+COPY --chown=app:app vfzsync/__*.py vfzsync/vfz_*.py vfzsync/
+COPY --chown=app:app vfzsync/lib/*.py vfzsync/lib/
+COPY --chown=app:app vfzsync/static vfzsync/static
+COPY --chown=app:app vfzsync/templates vfzsync/templates
+
+COPY --chown=app:app entrypoint.sh ./
 RUN chmod +rx $APP_HOME/entrypoint.sh
 
-USER app
 ENTRYPOINT [ "/home/app/entrypoint.sh", "web", "prod" ]
 # ENTRYPOINT [ "/home/app/entrypoint.sh", "web", "dev" ]
 # ENTRYPOINT [ "/home/app/entrypoint.sh", "script", "dev" ]

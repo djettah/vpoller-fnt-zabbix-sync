@@ -5,11 +5,14 @@ from vpoller.client import VPollerClient
 from debugtoolkit.debugtoolkit import deflogger, deflogger_class, init_logger
 
 
-@deflogger_class
+# @deflogger_class
 class vPollerAPI:
-    def __init__(self, vpoller_endpoint):
+    def deflogger_skip(self):
+        pass
+
+    def __init__(self, vpoller_endpoint, vpoller_retries, vpoller_timeout):
         super().__init__()
-        self.client = VPollerClient(endpoint=vpoller_endpoint)
+        self.client = VPollerClient(endpoint=vpoller_endpoint, retries=vpoller_retries, timeout=vpoller_timeout)
 
     def run(self, vc_host, method, name=None, key=None, properties=None):
         msg = {"method": method, "hostname": vc_host}

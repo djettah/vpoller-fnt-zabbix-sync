@@ -17,7 +17,10 @@ from time import sleep, time
 
 # Logging
 def init_logger():
-    MAIN_NAME = os.path.splitext(os.path.basename(sys.modules["__main__"].__file__))[0]
+    try:
+        MAIN_NAME = os.path.splitext(os.path.basename(sys.modules["__main__"].__file__))[0]
+    except:
+        MAIN_NAME = '__main__'
     logger = logging.getLogger(MAIN_NAME)
     return logger
 
@@ -106,6 +109,13 @@ def measure(operation=sum):
         return wrapper
 
     return decorator
+
+#todo
+def measure_class(cls):
+    for attr in cls.__dict__:
+        if callable(getattr(cls, attr)):
+            setattr(cls, attr, measure(getattr(cls, attr)))
+    return cls
 
 
 def run_once(main):
@@ -204,6 +214,7 @@ def deflogger_module(module, decorator_def, decorator_class=None):
 
 
 def deflogger_class(cls):
+    if 'deflogger_skip' in cls.__dict__: return cls
     for attr in cls.__dict__:
         if callable(getattr(cls, attr)):
             setattr(cls, attr, deflogger(getattr(cls, attr)))

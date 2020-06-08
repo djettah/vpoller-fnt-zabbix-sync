@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+# script mode
+# deprecated and outdated
+
 import atexit
 import json
 import logging
@@ -55,7 +58,6 @@ def script_main():
 CONFIG = vfzsync.CONFIG
 
 # dryable.set(False)
-
 
 if __name__ == "__main__":
     # Flow control
