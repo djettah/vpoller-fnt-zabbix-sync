@@ -1,5 +1,6 @@
 import threading
 import time
+import re
 
 import vfzsync
 from vfzsync import app
@@ -17,9 +18,10 @@ from debugtoolkit.debugtoolkit import (
 )
 from vfzsync.lib.vfzlib import VFZSync
 
-#todo #dev #test
+# todo #dev #test
 from flask_mail import Message
 from flask_mail import Mail
+
 
 class AsyncTask(threading.Thread):
     def __init__(self, task_id, proc, params=None):
@@ -56,7 +58,7 @@ def get_sync_status():
 
 
 def run_action(resource, verb, mode, async_run, args=None):
-    if (verb == 'run' or verb =='send') and state[resource][mode]["status"] == "running":
+    if (verb == "run" or verb == "send") and state[resource][mode]["status"] == "running":
         result = {"success": False, "message": "running"}
         return result
 
@@ -71,27 +73,36 @@ def run_action(resource, verb, mode, async_run, args=None):
     return result
 
 
+def init_mail(app):
+    app.config.update(
+        MAIL_SERVER=vfzsync.CONFIG["mail"]["server"],
+        MAIL_PORT=vfzsync.CONFIG["mail"]["port"],
+        MAIL_USE_TLS=vfzsync.CONFIG["mail"]["use_tls"],
+        MAIL_USE_SSL=vfzsync.CONFIG["mail"]["use_ssl"],
+    )
+    if vfzsync.CONFIG["mail"]["use_auth"]:
+        app.config.update(
+            MAIL_USERNAME=vfzsync.CONFIG["mail"]["username"],
+            MAIL_PASSWORD=vfzsync.CONFIG["mail"]["password"],
+        )
+    return Mail(app)
+
+
 def send_email(subject, sender, recipients, text_body, html_body, attachment=None):
+    # try:
     msg = Message(subject, sender=sender, recipients=recipients)
     msg.body = text_body
-    # msg.html = html_body
 
-    # with app.open_resource("/tmp/problem_report.html") as fp:
-        # msg.attach("problem_report.html", "text/html", fp.read())
-    # try:
     msg.attach("problem_report.html", "text/html", attachment)
     mail.send(msg)
-    return True
-    # except Exception as e:
-    #     return e.with_traceback
 
 
 def run_action_do(resource, verb, mode, args=None):
 
     if resource == "sync":
-        if verb == 'stats': 
+        if verb == "stats":
             return get_sync_stats()
-        if verb == 'status': 
+        if verb == "status":
             return get_sync_status()
         init_mode = mode.split("-")
     if resource == "update":
@@ -104,27 +115,30 @@ def run_action_do(resource, verb, mode, args=None):
         # init_mode = "test"
         # time.sleep(60)
         state[resource][mode]["status"] = "completed"
-        return {'success': True, 'message': "Тест ок"}
-        return 'ok'
+        state[resource][mode]["date"] = int(time.time())
+        return {"success": True, "message": "Тест ок"}
+        return "ok"
 
     result = {}
 
     # report/run is stateless; trapper is non-blocking
-    if (verb == 'run' and resource != 'report') or verb == 'send':
+    if (verb == "run" and resource != "report") or verb == "send":
         state[resource][mode]["status"] = "running"
         state[resource][mode]["date"] = int(time.time())
     if resource == "send" and mode == "trapper":
         state[resource][mode]["status"] = "running (non-blocking)"
 
-
     try:
         sync = VFZSync(init_mode=init_mode)
         run_result = getattr(sync, f"run_{resource}")(mode, args)
-
         if resource == "report":
-            if verb == 'send':
-                send_email(vfzsync.CONFIG["mail"]["subject"], vfzsync.CONFIG["mail"]["sender"], [vfzsync.CONFIG["mail"]["recipient"]], "", "", run_result)
-            if verb == 'run':
+            if verb == "send":
+                subject = vfzsync.CONFIG["mail"]["subject"]
+                sender = vfzsync.CONFIG["mail"]["sender"]
+                recipients = re.split(r"\s+|[,;]\s*", vfzsync.CONFIG["mail"]["recipients"])
+                body = ""
+                send_email(subject, sender, recipients, body, body, run_result)
+            if verb == "run":
                 return run_result
 
         state[resource][mode]["status"] = "completed"
@@ -142,32 +156,16 @@ def run_action_do(resource, verb, mode, args=None):
     return result
 
 
+state_init = {"status": "initialized", "date": int(time.time())}
 state = {
-    "sync": {
-        "vpoller-fnt": {"status": "initialized", "date": int(time.time())},
-        "fnt-zabbix": {"status": "initialized", "date": int(time.time())},
-    },
-    "update": {"random": {"status": "initialized", "date": int(time.time())}},
-    "send": {
-        "trapper": {"status": "initialized", "date": int(time.time())},
-        "groupupdate": {"status": "initialized", "date": int(time.time())},
-    },
-    "test": {"test": {"status": "initialized", "date": int(time.time())}},
-    "report": {
-        "problemsactive": {"status": "initialized", "date": int(time.time())},
-        "problemsclosed": {"status": "initialized", "date": int(time.time())},
-    },
+    "sync": {"vpoller-fnt": dict(state_init), "fnt-zabbix": dict(state_init),},
+    "update": {"random": dict(state_init)},
+    "send": {"trapper": dict(state_init), "groupupdate": dict(state_init),},
+    "test": {"test": dict(state_init)},
+    "report": {"problemsactive": dict(state_init), "problemsclosed": dict(state_init),},
 }
 
 logger = init_logger()
 logger.debug(f"{__name__} init done.")
 
-app.config.update(
-    MAIL_SERVER=vfzsync.CONFIG["mail"]["server"],
-    MAIL_PORT=vfzsync.CONFIG["mail"]["port"],
-    MAIL_USE_TLS=vfzsync.CONFIG["mail"]["use_tls"],
-    MAIL_USE_SSL=vfzsync.CONFIG["mail"]["use_ssl"],
-    MAIL_USERNAME=vfzsync.CONFIG["mail"]["username"],
-    MAIL_PASSWORD=vfzsync.CONFIG["mail"]["password"]
-)
-mail = Mail(app)
+mail = init_mail(app)

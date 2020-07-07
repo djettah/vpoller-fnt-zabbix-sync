@@ -44,7 +44,8 @@ VPOLLER_FNT_TRANSFORM_MAP = [
     ("summary.storage.committed.gb", "cSdiHddUsed"),
     ("summary.storage.provisioned.gb", "cSdHddTotal"),
     ("summary.guest.hostName", "cSdiHostname"),
-    ("summary.guest.guestFullName", "virtualMachineType"),
+    ("summary.config.guestFullName", "virtualMachineType"),
+    # ("summary.guest.guestFullName", "virtualMachineType"),
 ]
 
 FNT_VS_LINKED_IP_TRANSFORM_MAP = [("ipAddress", "ipAddress")]
@@ -84,7 +85,8 @@ VPOLLER_VM_ATTRIBUTES = [
     "summary.storage.committed",
     "summary.storage.uncommitted",
     "summary.guest.hostName",
-    "summary.guest.guestFullName"
+    "summary.config.guestFullName"
+    # "summary.guest.guestFullName"
 ]
 VPOLLER_VM_NET_ATTRIBUTES = ["ipAddress"]
 VPOLLER_VM_DISK_ATTRIBUTES = ["diskPath", "capacity", "freeSpace", "freeSpacePercentage"]
@@ -150,7 +152,8 @@ FNT_VS_ATTRIBUTES = [
     "remark",
     "datasource",
     "cSdiHostname",
-    "cSdiPurpose"
+    "cSdiPurpose",
+    "virtualMachineType"
 ]
 
 FNT_ZABBIX_FLAG_TRIGGERS = [
@@ -192,7 +195,7 @@ def get_vpoller_vms(vpoller):
     vms = []
 
     # progress counter
-    counter = ProgressCounter(len(vm_names), 10)
+    counter = ProgressCounter(len(vm_names), 10, 60)
 
     for vm_name in vm_names:
         progress = counter.iterate()
@@ -285,7 +288,7 @@ def get_fnt_vs(command, index, restrictions, related_entities=False):
 def sync_fnt_vs(command, vpoller_vms, fnt_virtualservers_indexed):
 
     # progress counter
-    counter = ProgressCounter(len(vpoller_vms), 25)
+    counter = ProgressCounter(len(vpoller_vms), 25, 60)
 
     # create/update vs
     for vm in vpoller_vms:
@@ -397,7 +400,7 @@ def sync_fnt_vs_entities(command, vs, vm, vs_attr_updateset):
                             entity_elid=vs_entity["elid"],
                             **entity_attr_updateset,
                         )
-                        logger.info(
+                        logger.debug(
                             f"VirtualServer {vs_name}: Updated {entity_class_name}: {entity_attr_updateset}."
                         )
                     # new entity
@@ -552,7 +555,7 @@ def sync_zabbix_hosts(zapi, fnt_virtualservers, zabbix_hosts_indexed_by_host):
     )
     items, items_indexed_by_hostids = get_zabbix_items(zapi=zapi, groupids=zabbix_hostgroup_id)
 
-    counter = ProgressCounter(len(fnt_virtualservers), 25)
+    counter = ProgressCounter(len(fnt_virtualservers), 25, 60)
     for vs in fnt_virtualservers:
         progress = counter.iterate()
         if progress:
@@ -995,91 +998,12 @@ class VFZSync:
         if mode == "groupupdate":
             logger.debug(f"Send completed in {mode} mode.")
 
+
     def run_report(self, mode=None, args=None):
         from .prob_report import create_report
-
         logger.info("Report started.")
-
-        # fnt_virtualservers_new, fnt_virtualservers_new_indexed = get_fnt_vs(
-        #     command=self._command, index="id", related_entities=False, restrictions=FNT_VS_FILTER_FNT_NEW_SERVERS
-        # )
-        # fnt_virtualservers_deleted, fnt_virtualservers_deleted_indexed = get_fnt_vs(
-        #     command=self._command, index="id", related_entities=False, restrictions=FNT_VS_FILTER_FNT_DELETED_UNCONFIRMED_SERVERS
-        # )
-        # report_vars = {}
-        # new_servers = [vs['visibleId'] for vs in fnt_virtualservers_new]
-        # report_vars['new_servers'] = ', '.join(new_servers)
-        # report_vars['new_servers_count'] = len(new_servers)
-        # deleted_servers = [vs['visibleId'] for vs in fnt_virtualservers_deleted]
-        # report_vars['deleted_servers'] = ', '.join(deleted_servers)
-        # report_vars['deleted_servers_count'] = len(deleted_servers)
-
-        # for flag in FNT_ZABBIX_FLAG_TRIGGERS:
-        #     group_id = self._zapi.hostgroup.get(filter={"name":f"FNT Command/{flag}"}, output=['groupid'])[0]['groupid']
-        #     report_vars[flag] = len(self._zapi.host.get(groupids=group_id, output=['hostid']))
-
         report = create_report(self._zapi, self._command, mode)
         logger.info("Report completed.")
-        return report
-
-    def run_report_old(self, mode=None, args=None):
-        logger.info("Report started.")
-
-        fnt_virtualservers_new, fnt_virtualservers_new_indexed = get_fnt_vs(
-            command=self._command,
-            index="id",
-            related_entities=False,
-            restrictions=FNT_VS_FILTER_FNT_NEW_SERVERS,
-        )
-        fnt_virtualservers_deleted, fnt_virtualservers_deleted_indexed = get_fnt_vs(
-            command=self._command,
-            index="id",
-            related_entities=False,
-            restrictions=FNT_VS_FILTER_FNT_DELETED_UNCONFIRMED_SERVERS,
-        )
-
-        new_servers = [vs["visibleId"] for vs in fnt_virtualservers_new]
-        new_servers = ", ".join(new_servers)
-        deleted_servers = [vs["visibleId"] for vs in fnt_virtualservers_deleted]
-        deleted_servers = ", ".join(deleted_servers)
-
-        hostid = self._zapi.host.get(filter={"host": "VFZ Sync"}, output=["hostid"])[0]["hostid"]
-        items = self._zapi.item.get(hostids=hostid, output=["itemid", "name"])
-        for item in items:
-            if item["name"] == "Virtual Servers stats: deleted":
-                itemid_del = item["itemid"]
-            if item["name"] == "Virtual Servers stats: new":
-                itemid_new = item["itemid"]
-        last_value_del = self._zapi.history.get(itemids=itemid_del, limit="1", output=["value"])[0]["value"]
-        report = f"<p> Удаленные серверы: {last_value_del}:</p><p>{deleted_servers}</p>"
-        last_value_new = self._zapi.history.get(itemids=itemid_new, limit="1", output=["value"])[0]["value"]
-        report += f"<p> Новые серверы: {last_value_new}:</p><p>{new_servers}</p>"
-
-        group_id = self._zapi.hostgroup.get(
-            filter={"name": "FNT Command/cSdiBackupNeeded"}, output=["groupid"]
-        )[0]["groupid"]
-        hosts = self._zapi.host.get(groupids=group_id, output=["hostid"])
-        report += f"<p> Старый бэкап: {len(hosts)}</p>"
-
-        group_id = self._zapi.hostgroup.get(
-            filter={"name": "FNT Command/cSdiNoShutdown"}, output=["groupid"]
-        )[0]["groupid"]
-        hosts = self._zapi.host.get(groupids=group_id, output=["hostid"])
-        report += f"<p> Недопустимо выключено: {len(hosts)}</p>"
-
-        group_id = self._zapi.hostgroup.get(
-            filter={"name": "FNT Command/cSdiMonitoringSnmp"}, output=["groupid"]
-        )[0]["groupid"]
-        hosts = self._zapi.host.get(groupids=group_id, output=["hostid"])
-        report += f"<p> Не доступно по SNMP: {len(hosts)}</p>"
-
-        group_id = self._zapi.hostgroup.get(
-            filter={"name": "FNT Command/cSdiMonitoring"}, output=["groupid"]
-        )[0]["groupid"]
-        hosts = self._zapi.host.get(groupids=group_id, output=["hostid"])
-        report += f"<p> Не доступно по ICMP: {len(hosts)}</p>"
-        logger.info("Report completed.")
-
         return report
 
 

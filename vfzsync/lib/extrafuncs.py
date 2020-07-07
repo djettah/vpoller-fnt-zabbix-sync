@@ -41,20 +41,26 @@ def datetime_to_local_timezone(dt):
 
 
 class ProgressCounter():
-    def __init__(self, final, step):
+    def __init__(self, final, step_progress, step_time):
         super().__init__()
         self.final = final
         self.counter = 0
         self.last_progress = 0
-        self.step = step
+        self.step_progress = step_progress
+        self.step_time = step_time
+        self.last_date = datetime.datetime.now()
 
     def iterate(self):
+        result = False
         self.counter += 1
         self.progress = round(100 * self.counter / self.final, 0)
-        if self.progress % self.step == 0 and self.last_progress != self.progress:
+        seconds = (datetime.datetime.now() - self.last_date).total_seconds()
+        
+        if self.progress % self.step_progress == 0 and self.last_progress != self.progress and seconds > self.step_time:
             self.last_progress = self.progress
-            return self.progress
-        return False
+            self.last_date = datetime.datetime.now()
+            result = self.progress
+        return result
 
     def deflogger_skip(self):
         pass

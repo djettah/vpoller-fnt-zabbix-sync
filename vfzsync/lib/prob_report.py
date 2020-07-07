@@ -512,8 +512,11 @@ def generate_report(zapi, command, args, mode, filename=None):
 def create_report(zapi, command, mode):
     """ Applicaton Logic """
     data = retrieve_data(zapi=zapi, mode=mode)
-    dataframe = clean_data(data, mode)
-    report = generate_report(zapi, command, dataframe, mode)
+    if not data.empty:
+        dataframe = clean_data(data, mode)
+        report = generate_report(zapi, command, dataframe, mode)
+    else:
+        report = 'No problems found'
     return report
 
 

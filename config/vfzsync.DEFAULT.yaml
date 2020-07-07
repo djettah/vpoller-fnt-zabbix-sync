@@ -30,10 +30,11 @@ mail:
   port: 465
   use_ssl: true
   use_tls: false
+  use_auth: true
   username: username@gmail.com
   password: password
   sender: from@gmail.com
-  recipient: to@gmail.com
+  recipients: to@gmail.com
   subject: Subject
 
 logging:

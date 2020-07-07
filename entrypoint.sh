@@ -48,36 +48,15 @@ command:
 mail:
   server: ${MAIL_SERVER}
   port: ${MAIL_PORT}
+  use_auth: ${MAIL_USE_AUTH} 
   use_ssl: ${MAIL_USE_SSL}
   use_tls: ${MAIL_USE_TLS}
   username: ${MAIL_USERNAME}
   password: ${MAIL_PASSWORD}
   sender: ${MAIL_SENDER}
-  recipient: ${MAIL_RECIPIENT}
+  recipients: ${MAIL_RECIPIENTS}
   subject: ${MAIL_SUBJECT}
 
-logging:
-  version: 1
-  formatters:
-    simple:
-      format: '%(asctime)s:%(module)s:%(name)s:%(levelname)s:%(message)s'
-    default:
-      format: '[%(asctime)s] %(levelname)s in %(module)s: %(message)s'
-  handlers:
-    console:
-      class: logging.StreamHandler
-      level: DEBUG
-      formatter: simple
-      stream: ext://sys.stderr
-    file:
-      class: logging.FileHandler
-      level: ERROR
-      formatter: simple
-      filename: <defined_in_code.log>
-    wsgi:
-      class: logging.StreamHandler
-      stream: ext://flask.logging.wsgi_errors_stream
-      formatter: simple
 logging:
   version: 1
   formatters:
