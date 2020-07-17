@@ -13,3 +13,4 @@ log
 .DS_Store
 __pycache__
 config/vfzsync.yaml
+*.gz

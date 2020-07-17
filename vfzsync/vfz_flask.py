@@ -1,26 +1,16 @@
+import re
 import threading
 import time
-import re
+
+from flask_mail import Mail, Message
 
 import vfzsync
+from debugtoolkit.debugtoolkit import (crash_me, debug_exception, deflogger,
+                                       deflogger_module, dry_request,
+                                       handle_exception, init_logger,
+                                       killer_loop, measure)
 from vfzsync import app
-
-from debugtoolkit.debugtoolkit import (
-    crash_me,
-    debug_exception,
-    deflogger,
-    deflogger_module,
-    dry_request,
-    handle_exception,
-    init_logger,
-    killer_loop,
-    measure,
-)
 from vfzsync.lib.vfzlib import VFZSync
-
-# todo #dev #test
-from flask_mail import Message
-from flask_mail import Mail
 
 
 class AsyncTask(threading.Thread):
@@ -166,6 +156,5 @@ state = {
 }
 
 logger = init_logger()
-logger.debug(f"{__name__} init done.")
-
 mail = init_mail(app)
+logger.debug(f"{__name__} init done.")

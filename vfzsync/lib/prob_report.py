@@ -51,19 +51,6 @@ def retrieve_data(zapi, mode="problemsactive"):
     todays_date = int(time.mktime(datetime.date.today().timetuple()))
 
     if mode == "problemsactive":
-        # problems = zapi.problem.get(source=0, recent=False, output="extend")
-        # eventids = set([int(p["eventid"]) for p in problems])
-        # events = zapi.event.get(
-        #     source=0,
-        #     selectHosts=["name", "status"],
-        #     output="extend",
-        #     eventids=list(eventids),
-        #     sortfield=["clock", "eventid"],
-        #     sortorder="DESC",
-        # )
-        # events = [event for event in events if event['hosts'][0]['status'] == '0'] #todo
-        # objectids = [(p["objectid"]) for p in problems]
-
         triggers = zapi.trigger.get(
             skipDependent=1,
             filter={"value": 1, "status": 0},
