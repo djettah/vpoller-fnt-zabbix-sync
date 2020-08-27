@@ -95,7 +95,7 @@ FNT_VS_FILTER_VPOLLER_FNT = {
     # "cUuid": {"operator": "like", "value": "*-*-*-*-*"},
     "datasource": {"operator": "=", "value": vfzsync.CONFIG["vpoller"]["vc_host"]},
     # "cCSdiDelConfirmed": {"operator": "like", "value": "N"},
-    # "cSdiDeleted": {"operator": "like", "value": "N"}, 
+    # "cSdiDeleted": {"operator": "like", "value": "N"},
 }
 
 FNT_VS_FILTER_FNT_ZABBIX = {
@@ -153,7 +153,7 @@ FNT_VS_ATTRIBUTES = [
     "datasource",
     "cSdiHostname",
     "cSdiPurpose",
-    "virtualMachineType"
+    "virtualMachineType",
 ]
 
 FNT_ZABBIX_FLAG_TRIGGERS = [
@@ -163,7 +163,8 @@ FNT_ZABBIX_FLAG_TRIGGERS = [
     "cSdiBackupNeeded",
 ]
 
-ZABBIX_MACROS = ['{$SNMP_COMMUNITY}', '{$HOST_PURPOSE}', '{$VSPHERE.HOST}']
+ZABBIX_MACROS = ["{$SNMP_COMMUNITY}", "{$HOST_PURPOSE}", "{$VSPHERE.HOST}"]
+
 
 class VFZException(Exception):
     pass
@@ -237,10 +238,6 @@ def get_vpoller_vms(vpoller):
             ips_indexed = {ip: {"ipAddress": ip} for ip in ips_v4}
             vm["ipAddress"] = ips_indexed
             vm["mountpoint"] = disks_indexed
-
-            # vm["summary.storage.provisioned"] = (
-            #     vm["summary.storage.unshared"] + vm["summary.storage.uncommitted"]
-            # )
             vm["summary.storage.provisioned"] = (
                 vm["summary.storage.committed"] + vm["summary.storage.uncommitted"]
             )
@@ -252,11 +249,10 @@ def get_vpoller_vms(vpoller):
         except vPollerException:
             logger.exception(f"Failed to get VM {vm_name} properties.")
             raise VFZException("Failed to get VM data from vPoller")
-            # success = False
-    # success = True
+
     vms_indexed = {vm["config.instanceUuid"]: vm for vm in vms}
 
-    return vms, vms_indexed  # , success
+    return vms, vms_indexed
 
 
 #%%
@@ -352,7 +348,7 @@ def sync_fnt_vs(command, vpoller_vms, fnt_virtualservers_indexed):
 
             # update linked entities
             sync_fnt_vs_entities(command, vs=vs, vm=vm, vs_attr_updateset=vs_attr_updateset)
-        
+
         # do we have attributes to create/update
         if vs_attr_updateset:
             create_update_fnt_vs(command, vs=vs, vs_attr_updateset=vs_attr_updateset)
@@ -437,16 +433,7 @@ def sync_fnt_vs_entities(command, vs, vm, vs_attr_updateset):
             entity_class_custom,
         )
 
-    # update aggregated attrs  # deprecated
-    # hdd_used, hdd_total = list(map(gib_round, [hdd_used, hdd_total]))
-    # transform_map = [(hdd_used, "cSdiHddUsed"), (hdd_total, "cSdHddTotal")]
-    # for tm_entry in transform_map:
-    #     vm_attr, vs_attr = tm_entry
-    #     if vs[vs_attr] != vm_attr:
-    #         vs_attr_updateset[vs_attr] = vm_attr
 
-
-# region
 # def create_update_fnt_vs_entities(command, entity_attr_updateset, vs_entity=None,
 # entity_class_name=None, entity_class_custom=False):
 #     try:
@@ -459,7 +446,6 @@ def sync_fnt_vs_entities(command, vs, vm, vs_attr_updateset):
 #         logger.debug(f"VirtualServer attributes: {entity_attr_updateset}")
 #     except FNTException:
 #         logger.error(f"Failed to create/update VirtualServer: {entity_attr_updateset}.")
-# endregion
 
 
 def cleanup_fnt_vs_entities(
@@ -527,18 +513,20 @@ def cleanup_fnt_vs(command, fnt_virtualservers, vpoller_vms_indexed):
         vs_attr_updateset = {}
         # safety: do not sync if no vms received
         if vpoller_vms_indexed and not vpoller_vms_indexed.get(vs_uuid) and not yes_no(vs["cSdiDeleted"]):
-            vs_attr_updateset = {
-                "cSdiDeleted": "Y",
-                "cSdiNewServer": "N",
-            }
+            vs_attr_updateset = {"cSdiDeleted": "Y"}
             try:
                 sync_fnt_vs_entities(command, vs=vs, vm={}, vs_attr_updateset=vs_attr_updateset)
-                command.update_entity(
-                    entity_type="virtualServer", entity_elid=vs["elid"], **vs_attr_updateset
-                )
+                # delete vs if still in new state
+                if yes_no(vs["cSdiNewServer"]):
+                    command.delete_entity(entity_type="virtualServer", entity_elid=vs["elid"])
+                else:
+                    command.update_entity(
+                        entity_type="virtualServer", entity_elid=vs["elid"], **vs_attr_updateset
+                    )
 
-            except FNTException:
+            except FNTException as e:
                 logger.error(f"Failed to create/update VirtualServer: {vs_attr_updateset}.")
+                logger.exception(str(e))
             else:
                 logger.debug(f'VirtualServer {vs["visibleId"]} update set: {vs_attr_updateset}')
                 logger.info(f'Updated VirtualServer {vs["visibleId"]}.')
@@ -568,10 +556,10 @@ def sync_zabbix_hosts(zapi, fnt_virtualservers, zabbix_hosts_indexed_by_host):
         host_updateset = {}
         hostinterface_updateset = {}
         hostmacros_updateset = [
-                    {"macro": "{$SNMP_COMMUNITY}", "value": vs["cCommunityName"]},
-                    {"macro": "{$VSPHERE.HOST}", "value": vfzsync.CONFIG["vpoller"]["vc_host"]},
-                    {"macro": "{$HOST_PURPOSE}", "value": vs["cSdiPurpose"]}
-                ]
+            {"macro": "{$SNMP_COMMUNITY}", "value": vs["cCommunityName"]},
+            {"macro": "{$VSPHERE.HOST}", "value": vfzsync.CONFIG["vpoller"]["vc_host"]},
+            {"macro": "{$HOST_PURPOSE}", "value": vs["cSdiPurpose"]},
+        ]
         if not host:
             # create host
             if (
@@ -616,23 +604,18 @@ def sync_zabbix_hosts(zapi, fnt_virtualservers, zabbix_hosts_indexed_by_host):
             host_id = host["hostid"]
             host_macros = {}
             if host["macros"]:
-                # host_macro1 = [macro for macro in host["macros"] if macro["macro"] == "{$SNMP_COMMUNITY}"][0]
-                # host_macro2 = [macro for macro in host["macros"] if macro["macro"] == "{$HOST_PURPOSE}"][0]
-                # host_community = host_macro1["value"]
-                # host_purpose = host_macro2["value"]
                 for macro in host["macros"]:
                     host_macros[macro["macro"]] = macro["value"]
-            # else:
-            #     host_community = ""
-            host_purpose = host_macros.get('{$HOST_PURPOSE}', "")
-            host_community = host_macros.get('{$SNMP_COMMUNITY}', "public")
-            host_vsphere_host = host_macros.get('{$VSPHERE.HOST}', '')
+
+            host_purpose = host_macros.get("{$HOST_PURPOSE}", "")
+            host_community = host_macros.get("{$SNMP_COMMUNITY}", "public")
+            host_vsphere_host = host_macros.get("{$VSPHERE.HOST}", "")
 
             host_interface = host["interfaces"][0]
             host_interface_id = host_interface["interfaceid"]
             host_ip = host_interface["ip"]
             host_name = host["name"]
-            host_description = host['description']
+            host_description = host["description"]
 
             host_triggers = triggers_indexed_by_hostids[host_id]
             host_triggers_by_tag = {
@@ -646,19 +629,17 @@ def sync_zabbix_hosts(zapi, fnt_virtualservers, zabbix_hosts_indexed_by_host):
                         host_items_indexed_by_app[app["name"]] = []
                     host_items_indexed_by_app[app["name"]].append(item)
 
-            # FNT_ZABBIX_TRANSFORM_MAP = [
-            #     ("cManagementInterface", host_ip),
-            #     ("visibleId", "name"),
-            #     ("cCommunityName", host_community)
-            # ]
-
             if host_name != vs["visibleId"]:
                 host_updateset["name"] = vs["visibleId"]
 
             if vs["cManagementInterface"] and host_ip != vs["cManagementInterface"]:
                 hostinterface_updateset = {"interfaceid": host_interface_id, "ip": vs["cManagementInterface"]}
 
-            if (host_community != vs["cCommunityName"]) or (host_purpose != vs["cSdiPurpose"]) or (host_vsphere_host != vfzsync.CONFIG["vpoller"]["vc_host"]):
+            if (
+                (host_community != vs["cCommunityName"])
+                or (host_purpose != vs["cSdiPurpose"])
+                or (host_vsphere_host != vfzsync.CONFIG["vpoller"]["vc_host"])
+            ):
                 host_updateset["macros"] = hostmacros_updateset
 
             host_status = "1"
@@ -719,7 +700,6 @@ def sync_zabbix_hosts(zapi, fnt_virtualservers, zabbix_hosts_indexed_by_host):
 def cleanup_zabbix_hosts(zapi, zabbix_hosts, fnt_virtualservers_indexed):
     for host in zabbix_hosts:
         host_id = host["hostid"]
-        # host["host"] not in fnt_virtualservers_indexed
         vs = fnt_virtualservers_indexed.get(host["host"], {})
         # don't delete if no data from FNT
         if fnt_virtualservers_indexed and (yes_no(vs.get("cSdiDeleted", "N")) or not vs):
@@ -828,12 +808,6 @@ class VFZSync:
     def run_fnt_zabbix_sync(self):
         """ FNT -> Zabbix """
 
-        FNT_ZABBIX_TRANSFORM_MAP = [
-            ("id", "host"),
-            ("visibleId", "name"),
-            ("cCommunityName", "{$SNMP_COMMUNITY}"),
-        ]
-
         fnt_virtualservers, fnt_virtualservers_indexed = get_fnt_vs(
             command=self._command, index="id", related_entities=False, restrictions=FNT_VS_FILTER_FNT_ZABBIX
         )
@@ -934,7 +908,6 @@ class VFZSync:
                 if ips:
                     ip = list(ips)[0]
                     vs_attr_updateset["cManagementInterface"] = ip
-                    # print(vs["visibleId"], ip)
                 else:
                     vs_attr_updateset["cManagementInterface"] = "0.0.0.0"
 
@@ -998,9 +971,9 @@ class VFZSync:
         if mode == "groupupdate":
             logger.debug(f"Send completed in {mode} mode.")
 
-
     def run_report(self, mode=None, args=None):
         from .prob_report import create_report
+
         logger.info("Report started.")
         report = create_report(self._zapi, self._command, mode)
         logger.info("Report completed.")

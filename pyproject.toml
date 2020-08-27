@@ -16,6 +16,7 @@ Flask-Mail = "^0.9.1"
 plotly = "^4.7.1"
 pandas = "^1.0.3"
 jinja2 = "^2.11.2"
+flask_mail = "^0.9.1"
 
 [tool.poetry.dev-dependencies]
 jupyterlab = "^1.2"

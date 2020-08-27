@@ -1206,7 +1206,7 @@ version = "3.5.1"
 notebook = ">=4.4.1"
 
 [metadata]
-content-hash = "88e5d3fbd5b862e6593a02c9d09b029ff681f58a664067bf7165b046cca553dc"
+content-hash = "407e9bcda07d59eebc82ab84eb92196b31cdc55780cad1d64395bee76a3aeb90"
 python-versions = "^3.8"
 
 [metadata.files]
@@ -1660,6 +1660,7 @@ regex = [
     {file = "regex-2020.4.4.tar.gz", hash = "sha256:295badf61a51add2d428a46b8580309c520d8b26e769868b922750cf3ce67142"},
 ]
 requests = [
+    {file = "requests-2.23.0-py2.7.egg", hash = "sha256:5d2d0ffbb515f39417009a46c14256291061ac01ba8f875b90cad137de83beb4"},
     {file = "requests-2.23.0-py2.py3-none-any.whl", hash = "sha256:43999036bfa82904b6af1d99e4882b560e5e2c68e5c4b0aa03b655f3d7d73fee"},
     {file = "requests-2.23.0.tar.gz", hash = "sha256:b3f43d496c6daba4493e7c431722aeb7dbc6288f52a6e04e7b6023b0247817e6"},
 ]

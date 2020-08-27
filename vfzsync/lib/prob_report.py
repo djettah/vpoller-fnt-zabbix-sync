@@ -335,7 +335,7 @@ def generate_table(args, mode):
     else:
         title = "Список закрытых за неделю проблем"
     layout = go.Layout(
-        title=dict(text=title, font=dict(size=18), xanchor="left", x=0), margin=dict(l=30, r=30, t=30, b=20)
+        title=dict(text=title, font=dict(size=18), xanchor="left", x=0), margin=dict(l=30, r=30, t=30, b=20), autosize=True
     )
 
     fig = go.Figure(data=[trace], layout=layout)
@@ -432,7 +432,13 @@ def fnt_zabbix_stats_servers(zapi, command, args):
         # report_vars['deleted_servers_count'] = len(servers)
 
         title = "Удалённые узлы"
+    # servers = [f"<tr><td>Server {n}</td></tr>" for n in range(20)]
+    servers = [f"<tr><td>{server}</td></tr>" for server in servers]
+    # text = title + '<p>' + "<p>".join(servers)
+    text = f"<table>{''.join(servers)}</table>"
 
+    # return text
+    servers=[]
     trace = go.Table(
         name="Статистика узлов СДИ Базис",
         columnwidth=[11],
@@ -453,16 +459,18 @@ def fnt_zabbix_stats_servers(zapi, command, args):
 
     layout = go.Layout(
         title=dict(text=title, font=dict(size=18), xanchor="left", x=0, yanchor="top"),
-        height=242,
+        height=70,
+        # height=242,
         width=350,
         margin=dict(l=30, r=30, t=60, b=50),
+        # autosize=True
     )
 
     fig = go.Figure(data=[trace], layout=layout)
     fig.layout["template"]["data"]["table"][0]["header"]["fill"]["color"] = "rgba(0,0,0,0)"
 
     # plotly.offline.plot(data, filename="generate_table.html")
-    return plotly.offline.plot(fig, output_type="div", include_plotlyjs=False)
+    return plotly.offline.plot(fig, output_type="div", include_plotlyjs=False) + text
 
 
 def generate_report(zapi, command, args, mode, filename=None):

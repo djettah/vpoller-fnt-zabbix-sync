@@ -29,6 +29,17 @@
                     font-size: 3.5rem;
                 }
             }
+            table, th, td {
+              border: 1px solid pink;
+              width:350px;
+              cursor: auto; 
+              font-family: "Open Sans", verdana, arial, sans-serif; 
+              font-size: 12px; 
+              fill: rgb(42, 63, 95); 
+              fill-opacity: 1; 
+              white-space: pre;
+            }
+
         </style>
         <!-- Custom styles for this template -->
         <!-- <link href="starter-template.css" rel="stylesheet"> -->
@@ -39,8 +50,8 @@
         <div class="container-fluid">
             <div class="row no-gutters">
                 <div class="col-md-4">{{ page.fnt_zabbix_stats }}</div>
-                <div class="col-md-4">{{ page.fnt_zabbix_stats_new }}</div>
-                <div class="col-md-4">{{ page.fnt_zabbix_stats_deleted }}</div>
+                <div class="col-lg-4">{{ page.fnt_zabbix_stats_new }}</div>
+                <div class="col-lg-4">{{ page.fnt_zabbix_stats_deleted }}</div>
             </div>
             <div class="row no-gutters">
                 <div class="col-md-4">{{ page.percentage_pie }}</div>
