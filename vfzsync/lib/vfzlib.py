@@ -154,6 +154,7 @@ FNT_VS_ATTRIBUTES = [
     "cSdiHostname",
     "cSdiPurpose",
     "virtualMachineType",
+    "cServerWithHistory",
 ]
 
 FNT_ZABBIX_FLAG_TRIGGERS = [
@@ -275,9 +276,6 @@ def get_fnt_vs(command, index, restrictions, related_entities=False):
                 entities_indexed = {entity["entity"][index]: entity for entity in entities}
                 vs[entity_class_name] = entities_indexed
 
-            # ips = [vs_ip["ipAddress"] for vs_ip in vs_ips]
-            # vs["ipAddress"] = ips
-            # vs["ips"] = vs_ips
     return virtualservers, virtualservers_indexed
 
 
@@ -304,7 +302,6 @@ def sync_fnt_vs(command, vpoller_vms, fnt_virtualservers_indexed):
         # vm["last_backup"] = "1970-01-01T00:00:00Z"  # default backup date
         vm["last_backup"] = None
         vm["vc_host"] = vfzsync.CONFIG["vpoller"]["vc_host"]
-        # vm['last_backup'] = None
         if m := re.match(r".*Time: \[(\d\d\.\d\d\.\d\d\d\d .*?)\].*", vm_annotation):  # noqa
             last_backup = m.group(1)
             last_backup = re.sub(
@@ -322,29 +319,18 @@ def sync_fnt_vs(command, vpoller_vms, fnt_virtualservers_indexed):
                 vs["cSdiLastBackup"] = last_backup_local
 
         # compare and update attributes
-        # VPOLLER_FNT_TRANSFORM_MAP.append(())
         for tm_entry in VPOLLER_FNT_TRANSFORM_MAP:
             vm_attr, vs_attr = tm_entry
             if normalize_none(vm.get(vm_attr, "")) != normalize_none(vs.get(vs_attr)):
                 vs_attr_updateset[vs_attr] = normalize_none(vm.get(vm_attr, ""))
 
-        # deprecated
-        # if not vs:
-        #     # undelete vs if discovered again
-        #     last_deleted_vs = get_last_deleted_vs(command, vm["name"])
-        #     if last_deleted_vs:
-        #         vs = last_deleted_vs[0]
-        #         for entity_type in FNT_VS_LINKED_ENTITIES:
-        #             vs[entity_type] = {}
-        #         vs_attr_updateset["cSdiDeleted"] = "N"
-        #         vs_attr_updateset["cCSdiDelConfirmed"] = "N"
-
         if vs:
             # undelete vs if discovered again
             if yes_no(vs["cSdiDeleted"]):
+                if yes_no(vs["cCSdiDelConfirmed"]):
+                    vs_attr_updateset["cSdiNewServer"] = "Y"
                 vs_attr_updateset["cSdiDeleted"] = "N"
                 vs_attr_updateset["cCSdiDelConfirmed"] = "N"
-                vs_attr_updateset["cSdiNewServer"] = "Y"
 
             # update linked entities
             sync_fnt_vs_entities(command, vs=vs, vm=vm, vs_attr_updateset=vs_attr_updateset)
@@ -372,7 +358,6 @@ def sync_fnt_vs_entities(command, vs, vm, vs_attr_updateset):
         if not vm_entities and not yes_no(vs_attr_updateset.get("cSdiDeleted", "N")):
             continue
 
-        # logger.debug(f"{entities=}")
         for entity_key in vm_entities:
             vm_entity = vm[entity_index][entity_key]
             vs_entity = vs_entities.get(entity_key, {}).get("entity", {})
@@ -390,7 +375,6 @@ def sync_fnt_vs_entities(command, vs, vm, vs_attr_updateset):
             if entity_attr_updateset:
                 try:
                     if vs_entity:
-                        # logger.debug(f"VirtualServer {vs_name}: Found {entity_class_name}: {vs_entity}")
                         command.update_entity(
                             entity_type=entity_class_name,
                             entity_elid=vs_entity["elid"],
@@ -457,25 +441,29 @@ def cleanup_fnt_vs_entities(
     vs_attr_updateset,
     entity_index,
     entity_class_custom,
-    delete_if_empty=False,
+    # delete_if_empty=False,
 ):
 
     for entity in vs_entities:
         linked_entity = vs_entities[entity]["entity"][entity_index]
         vm_entities = vm.get(entity_index, [])
+        # safety check
         # if not delete_if_empty and not vm_entities:
         if not vm_entities and not yes_no(vs_attr_updateset.get("cSdiDeleted", "N")):
             return
         if linked_entity not in vm_entities:
             # link_elid = entities[entity]["relation"]["linkElid"]
             linked_elid = vs_entities[entity]["entity"]["elid"]
-            if entity_class_name == "vmIpAddress":
-                if vs["cManagementInterface"] == linked_entity:
-                    vs_attr_updateset["cManagementInterface"] = ""
-                    # disable monitoring if mgmt ip changes and vm not deleted
-                    if not yes_no(vs_attr_updateset.get("cSdiDeleted", "N")):
-                        vs_attr_updateset["cSdiMonitoring"] = "N"
-                        vs_attr_updateset["cSdiMonitoringSnmp"] = "N"
+
+            # deprecated
+            # if entity_class_name == "vmIpAddress":
+            #     if vs["cManagementInterface"] == linked_entity:
+            #         vs_attr_updateset["cManagementInterface"] = ""
+            #         # disable monitoring if mgmt ip changes and vm not deleted
+            #         if not yes_no(vs_attr_updateset.get("cSdiDeleted", "N")):
+            #             vs_attr_updateset["cSdiMonitoring"] = "N"
+            #             vs_attr_updateset["cSdiMonitoringSnmp"] = "N"
+
             command.delete_entity(
                 entity_type=entity_class_name, entity_custom=entity_class_custom, entity_elid=linked_elid,
             )
@@ -513,23 +501,30 @@ def cleanup_fnt_vs(command, fnt_virtualservers, vpoller_vms_indexed):
         vs_attr_updateset = {}
         # safety: do not sync if no vms received
         if vpoller_vms_indexed and not vpoller_vms_indexed.get(vs_uuid) and not yes_no(vs["cSdiDeleted"]):
-            vs_attr_updateset = {"cSdiDeleted": "Y"}
+            vs_attr_updateset = {"cSdiDeleted": "Y", "cSdiNewServer": "N", "cCSdiDelConfirmed": "N"}
             try:
                 sync_fnt_vs_entities(command, vs=vs, vm={}, vs_attr_updateset=vs_attr_updateset)
-                # delete vs if still in new state
+
+                action = "update"
                 if yes_no(vs["cSdiNewServer"]):
-                    command.delete_entity(entity_type="virtualServer", entity_elid=vs["elid"])
-                else:
+                    if yes_no(vs["cServerWithHistory"]):
+                        vs_attr_updateset["cCSdiDelConfirmed"] = "Y"
+                    else:
+                        action = "delete"
+
+                if action == "update":
                     command.update_entity(
                         entity_type="virtualServer", entity_elid=vs["elid"], **vs_attr_updateset
                     )
+                    logger.info(f'Updated VirtualServer {vs["visibleId"]}.')
+                    logger.debug(f'VirtualServer {vs["visibleId"]} update set: {vs_attr_updateset}')
+                if action == "delete":
+                    command.delete_entity(entity_type="virtualServer", entity_elid=vs["elid"])
+                    logger.info(f'Deleted VirtualServer {vs["visibleId"]}.')
 
             except FNTException as e:
-                logger.error(f"Failed to create/update VirtualServer: {vs_attr_updateset}.")
+                logger.error(f"Failed to create/update/delete VirtualServer: {vs_attr_updateset}.")
                 logger.exception(str(e))
-            else:
-                logger.debug(f'VirtualServer {vs["visibleId"]} update set: {vs_attr_updateset}')
-                logger.info(f'Updated VirtualServer {vs["visibleId"]}.')
 
 
 def sync_zabbix_hosts(zapi, fnt_virtualservers, zabbix_hosts_indexed_by_host):
@@ -711,15 +706,6 @@ def cleanup_zabbix_hosts(zapi, zabbix_hosts, fnt_virtualservers_indexed):
                 logger.info(f'Deleted Zabbix host {host["host"]}.')
 
 
-def get_last_deleted_vs(command, name):
-    restrictions = {"visibleId": {"operator": "=", "value": name}}
-    vs = command.get_entities(
-        "virtualServer", attributes=FNT_VS_ATTRIBUTES, restrictions=restrictions, last_deleted=True
-    )
-
-    return vs
-
-
 def zabbix_send(senderset):
     sender = ZabbixSender(zabbix_server=vfzsync.CONFIG["zabbix"]["proxy"], zabbix_port=10051)
     result = sender.send(senderset)
@@ -798,10 +784,13 @@ class VFZSync:
                 related_entities=True,
                 restrictions=FNT_VS_FILTER_VPOLLER_FNT,
             )
+            if not vpoller_vms:
+                logger.warn(f"No VMs received from vpoller/vCenter, aborting sync.")
+                return False
 
             sync_fnt_vs(self._command, vpoller_vms, fnt_virtualservers_indexed)
-
             cleanup_fnt_vs(self._command, fnt_virtualservers, vpoller_vms_indexed)
+
         except VFZException as e:
             logger.exception(str(e))
 
@@ -811,6 +800,10 @@ class VFZSync:
         fnt_virtualservers, fnt_virtualservers_indexed = get_fnt_vs(
             command=self._command, index="id", related_entities=False, restrictions=FNT_VS_FILTER_FNT_ZABBIX
         )
+        if not fnt_virtualservers:
+            logger.warn(f"No VirtualServers received from FNT, aborting sync.")
+            return False
+
         zabbix_hostgroup_id = get_zabbix_hostgroupid_by_name(
             self._zapi, vfzsync.CONFIG["zabbix"]["hostgroup"]
         )
