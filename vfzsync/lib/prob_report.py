@@ -420,7 +420,7 @@ def fnt_zabbix_stats_servers(zapi, command, args):
         # report_vars['new_servers_count'] = len(servers)
 
         title = "Новые узлы"
-    else:
+    elif args == "deleted":
         fnt_virtualservers_deleted, fnt_virtualservers_deleted_indexed = get_fnt_vs(
             command=command,
             index="id",
@@ -432,6 +432,10 @@ def fnt_zabbix_stats_servers(zapi, command, args):
         # report_vars['deleted_servers_count'] = len(servers)
 
         title = "Удалённые узлы"
+    elif args == "problems":
+        servers = []
+        title = "Нет данных о проблемах"
+
     # servers = [f"<tr><td>Server {n}</td></tr>" for n in range(20)]
     servers = [f"<tr><td>{server}</td></tr>" for server in servers]
     # text = title + '<p>' + "<p>".join(servers)
@@ -473,7 +477,7 @@ def fnt_zabbix_stats_servers(zapi, command, args):
     return plotly.offline.plot(fig, output_type="div", include_plotlyjs=False) + text
 
 
-def generate_report(zapi, command, args, mode, filename=None):
+def generate_report(zapi, command, args, mode, noproblemsdata=False, filename=None):
 
     """ Generate report to be emailed out """
     env = Environment(loader=PackageLoader("vfzsync", "templates"))
@@ -483,17 +487,24 @@ def generate_report(zapi, command, args, mode, filename=None):
         title = "Отчёт об активных проблемах"
     else:
         title = "Отчёт о закрытых за 7д. проблемах"
-
+    
     data = {
-        "fnt_zabbix_stats": fnt_zabbix_stats(zapi, command, args),
-        "fnt_zabbix_stats_new": fnt_zabbix_stats_servers(zapi, command, "new"),
-        "fnt_zabbix_stats_deleted": fnt_zabbix_stats_servers(zapi, command, "deleted"),
-        "percentage_pie": problems_by_severity(args),
-        "frequency_line": time_and_frequency(args),
-        "per_day_bar": problems_per_day(args, mode),
-        "generated_table": generate_table(args, mode),
-        "title": title,
-    }
+            "fnt_zabbix_stats": fnt_zabbix_stats(zapi, command, args),
+            "fnt_zabbix_stats_new": fnt_zabbix_stats_servers(zapi, command, "new"),
+            "fnt_zabbix_stats_deleted": fnt_zabbix_stats_servers(zapi, command, "deleted"),
+            "title": title
+        }
+    if not noproblemsdata:
+        data = {
+            **data,
+            "percentage_pie": problems_by_severity(args),
+            "frequency_line": time_and_frequency(args),
+            "per_day_bar": problems_per_day(args, mode),
+            "generated_table": generate_table(args, mode)
+        }
+    else:
+        data = {**data,
+            "generated_table": fnt_zabbix_stats_servers(zapi, command, "problems")}
 
     compiled_report = comprise_template.render(page=data)
 
@@ -509,9 +520,9 @@ def create_report(zapi, command, mode):
     data = retrieve_data(zapi=zapi, mode=mode)
     if not data.empty:
         dataframe = clean_data(data, mode)
-        report = generate_report(zapi, command, dataframe, mode)
+        report = generate_report(zapi, command, dataframe, mode, noproblemsdata=False)
     else:
-        report = 'No problems found'
+        report = generate_report(zapi, command, data, mode, noproblemsdata=True)
     return report
 
 
