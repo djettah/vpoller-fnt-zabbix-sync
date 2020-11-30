@@ -17,6 +17,10 @@ if [ ! -d ./log ]; then
     mkdir log
 fi
 
+if [ ! -d ./reports ]; then
+    mkdir reports
+fi
+
 DEFAULT_CONFIG=$(cat <<-END
 general:
   debug: ${GENERAL_DEBUG}

@@ -6,6 +6,7 @@ import sys
 import time
 import random
 import uuid
+import glob
 
 from dateutil import parser
 from pyzabbix.api import ZabbixAPI, ZabbixAPIException
@@ -966,9 +967,15 @@ class VFZSync:
 
     def run_report(self, mode=None, args=None):
         from .prob_report import create_report
-
         logger.info("Report started.")
-        report = create_report(self._zapi, self._command, mode)
+        # cleanup folder
+        try:
+            files = glob.glob('reports/*')
+            for f in files:
+                os.remove(f)
+        except Exception as e:
+            logger.warn(f'Failed to delete {f}. Reason: {e}')
+        report = create_report(self._zapi, self._command, mode=mode, args=args)
         logger.info("Report completed.")
         return report
 

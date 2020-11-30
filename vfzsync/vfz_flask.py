@@ -1,6 +1,9 @@
 import re
 import threading
 import time
+# import glob
+import os
+from datetime import datetime
 
 from flask_mail import Mail, Message
 
@@ -78,12 +81,23 @@ def init_mail(app):
     return Mail(app)
 
 
-def send_email(subject, sender, recipients, text_body, html_body, attachment=None):
+def send_email(subject, sender, recipients, text_body=None, html_body=None, attachment=None):
     # try:
+    timestamp = datetime.now().strftime("%Y-%m-%d")
+    subject = f"{subject} {timestamp}"
     msg = Message(subject, sender=sender, recipients=recipients)
-    msg.body = text_body
-
-    msg.attach("problem_report.html", "text/html", attachment)
+    if text_body: 
+        msg.body = text_body
+    if html_body:
+        msg.html = html_body
+    with app.open_resource(f'../reports/problems_report.html') as fp:
+        msg.attach("problem_report.html", "text/html", fp.read())
+    for r, d, f in os.walk('reports'):
+        for file in f:
+            if file.endswith('.png'):
+                with app.open_resource(f'../reports/{file}') as fp:
+                    msg.attach(filename=file, content_type="image/png", data=fp.read(),disposition="inline", headers=[['Content-ID',f'<{file}>'],])
+    # msg.attach("problem_report.pdf", "application/pdf", attachment)
     mail.send(msg)
 
 
@@ -117,17 +131,36 @@ def run_action_do(resource, verb, mode, args=None):
         state[resource][mode]["date"] = int(time.time())
     if resource == "send" and mode == "trapper":
         state[resource][mode]["status"] = "running (non-blocking)"
+    if resource == "report" and verb == "send":
+        args = 'email'
 
     try:
         sync = VFZSync(init_mode=init_mode)
         run_result = getattr(sync, f"run_{resource}")(mode, args)
+        # import pdfkit
+        # # pdf = pdfkit.from_string(run_result, False)
+
+        # from flask_weasyprint import HTML
+        # pdf = HTML(run_result).write_pdf()
+
+        # def render_pdf(html):
+        #     from xhtml2pdf import pisa
+        #     from io import StringIO, BytesIO
+        #     pdf = BytesIO()
+        #     pisa.CreatePDF(BytesIO(html.encode('utf-8')), pdf)
+        #     resp = pdf.getvalue()
+        #     pdf.close()
+        #     return resp
+        
+        # pdf = render_pdf(run_result)
+
         if resource == "report":
             if verb == "send":
                 subject = vfzsync.CONFIG["mail"]["subject"]
                 sender = vfzsync.CONFIG["mail"]["sender"]
                 recipients = re.split(r"\s+|[,;]\s*", vfzsync.CONFIG["mail"]["recipients"])
-                body = ""
-                send_email(subject, sender, recipients, body, body, run_result)
+                send_email(subject, sender, recipients, html_body=run_result, attachment=run_result)
+                # send_email(subject, sender, recipients, body, run_result, pdf)
             if verb == "run":
                 return run_result
 

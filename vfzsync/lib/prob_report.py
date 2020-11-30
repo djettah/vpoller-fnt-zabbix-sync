@@ -42,7 +42,7 @@ SEVERITY_LEVEL_MAP = {
     "4": "High",
     "5": "Disaster",
 }
-
+REPORT_TEMPLATE = 'problem_report.html'
 
 def retrieve_data(zapi, mode="problemsactive"):
     """ Function to retrieve Problem data from Zabbix API """
@@ -181,7 +181,7 @@ def clean_data(args, mode="problemsactive"):
     return cleaned_data
 
 
-def problems_by_severity(args):
+def zbx_problems_by_severity(args):
     """ Generate a Pie Chart representing percentage of all problems """
     dataframe = pd.DataFrame(args["severity"])
     dataframe["colors"] = dataframe["severity"].copy()
@@ -205,32 +205,35 @@ def problems_by_severity(args):
         hole=0.2,
         marker=dict(colors=colors, line=dict(color="rosybrown", width=1)),
     )
-
+    title = "Проблемы по важности"
     layout = go.Layout(
-        title=dict(text="Проблемы по важности", font=dict(size=18), xanchor="left", x=0),
+        title=dict(
+            # text=title, 
+            font=dict(size=18), xanchor="left", x=0),
         width=350,
         height=450,
-        margin=dict(l=30, r=30, t=50, b=50),
+        margin=dict(l=30, r=30, t=10, b=50),
     )
     # layout = go.Layout(title=dict(text="Problems by Severity:", font=dict(size=18), xanchor="left", x = 0))
 
     fig = go.Figure(data=[trace], layout=layout)
 
     # plotly.offline.plot(fig, filename="problems_by_severity.html")
-    return plotly.offline.plot(fig, output_type="div", include_plotlyjs=False)
+    plotly.io.write_image(fig, file=f"reports/problems_by_severity.png", format='png', scale=2)
+    return plotly.offline.plot(fig, output_type="div", include_plotlyjs=False), title
 
 
-def time_and_frequency(args):
+def zbx_problems_time_and_frequency(args):
     """ Generate Line chart showing total problems throughout the day """
     dataframe = pd.DataFrame(args["clock"])
     dataframe["clock"] = pd.to_datetime(dataframe["clock"]).dt.strftime("%H:%M")
     dataframe = dataframe["clock"].value_counts().sort_index()
 
     data = go.Scatter(x=dataframe.keys().tolist(), y=dataframe.tolist(), mode="lines", connectgaps=True,)
-
+    title = "Проблемы по времени суток"
     # layout = go.Layout(title=dict(text="Time of Frequency:", font=dict(size=18), xanchor="left", x = 0)) #fix
     layout = go.Layout(
-        title=dict(text="Проблемы по времени суток", font=dict(size=18), xanchor="left", x=0),
+        title=dict(text=title, font=dict(size=18), xanchor="left", x=0),
         width=500,
         height=400,
     )
@@ -238,10 +241,11 @@ def time_and_frequency(args):
     fig = go.Figure(data=[data], layout=layout)
 
     # plotly.offline.plot(fig, filename='time_and_frequency.html')
-    return plotly.offline.plot(fig, include_plotlyjs=False, output_type="div")
+    plotly.io.write_image(fig, file=f"reports/frequency_line.png", format='png', scale=2)
+    return plotly.offline.plot(fig, include_plotlyjs=False, output_type="div"), title
 
 
-def problems_per_day(args, mode):
+def zbx_problems_per_day(args, mode):
     """ Generate Bar Graph representing issues per day """
     dataframe = pd.DataFrame(args["clock"])
     series_data = pd.to_datetime(dataframe["clock"]).dt.normalize()
@@ -265,22 +269,25 @@ def problems_per_day(args, mode):
         title = "Хронология закрытых за неделю проблем"
 
     layout = go.Layout(
-        title=dict(text=title, font=dict(size=18), xanchor="left", x=0),
+        title=dict(
+            # text=title, 
+            font=dict(size=18), xanchor="left", x=0),
         width=800,
         height=400,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="gainsboro",
-        margin=dict(l=30, r=30, t=50, b=5),
+        margin=dict(l=30, r=30, t=0, b=5),
     )
     # plot_bgcolor='rgba(0,0,0,0)'
 
     fig = go.Figure(data=data, layout=layout)
 
     # plotly.offline.plot(fig, filename='problems_per_day.html')
-    return plotly.offline.plot(fig, include_plotlyjs=False, output_type="div")
+    plotly.io.write_image(fig, file="reports/per_day_bar.png", format='png', scale=2, width=1000)
+    return plotly.offline.plot(fig, include_plotlyjs=False, output_type="div"), title
 
 
-def generate_table(args, mode):
+def zbx_problems_table(args, mode):
     """ Generate Visual table for report """
 
     if mode != "problemsactive":
@@ -288,8 +295,10 @@ def generate_table(args, mode):
             # args[["eventid", "clock", "rts_clock", "severity", "hosts", "name"]] #fix
             args[["eventid", "clock", "severity", "hosts", "name"]]
         )
+        title = "Закрытые за неделю проблемы"
     else:
         dataframe = args
+        title ="Активные проблемы"
 
     dataframe["color"] = dataframe["severity"].map(SEVERITY_COLOR_MAP)
 
@@ -303,7 +312,7 @@ def generate_table(args, mode):
             fill_color.append(dataframe["color"].to_list())
 
     trace = go.Table(
-        name="Отчёт о проблемах",
+        # name="Отчёт о проблемах",
         # columnwidth=[6, 11, 9, 8, 26, 40], #fix
         columnwidth=[13, 7, 18, 40],
         header=dict(
@@ -335,13 +344,19 @@ def generate_table(args, mode):
     else:
         title = "Список закрытых за неделю проблем"
     layout = go.Layout(
-        title=dict(text=title, font=dict(size=18), xanchor="left", x=0), margin=dict(l=30, r=30, t=30, b=20), autosize=True
+        title=dict(
+            # text=title, 
+            font=dict(size=18), xanchor="left", x=0), margin=dict(l=30, r=30, t=0, b=20),
+        height= 200 + 20 * n,
+        # width = 1000
+        #, autosize=True
     )
 
     fig = go.Figure(data=[trace], layout=layout)
 
     # plotly.offline.plot(data, filename="generate_table.html")
-    return plotly.offline.plot(fig, output_type="div", include_plotlyjs=False)
+    plotly.io.write_image(fig, file="reports/generated_table.png", format='png', scale=2, width=1000)
+    return plotly.offline.plot(fig, output_type="div", include_plotlyjs=False), title
 
 
 def fnt_zabbix_stats(zapi, command, args):
@@ -372,9 +387,9 @@ def fnt_zabbix_stats(zapi, command, args):
         ],
         columns=["category", "value"],
     )
-
+    title = "Статистика"
     trace = go.Table(
-        name="Статистика",
+        # name=title,
         columnwidth=[11, 3],
         header=dict(
             values=[""],
@@ -394,20 +409,21 @@ def fnt_zabbix_stats(zapi, command, args):
     )
 
     layout = go.Layout(
-        title=dict(text="Статистика", font=dict(size=18), xanchor="left", x=0, yanchor="top"),
+        # title=dict(text="Статистика", font=dict(size=18), xanchor="left", x=0, yanchor="top"),
         width=350,
         height=242,
-        margin=dict(l=30, r=30, t=60, b=50),
+        margin=dict(l=30, r=30, t=0, b=50),
     )
 
     fig = go.Figure(data=[trace], layout=layout)
     fig.layout["template"]["data"]["table"][0]["header"]["fill"]["color"] = "rgba(0,0,0,0)"
 
-    # plotly.offline.plot(data, filename="generate_table.html")
-    return plotly.offline.plot(fig, output_type="div", include_plotlyjs=False)
+    # plotly.offline.plot(fig, filename="generate_fnt_zabbix_stats.html")
+    plotly.io.write_image(fig, file="reports/fnt_zabbix_stats.png", format='png', scale=2)
+    return plotly.offline.plot(fig, output_type="div", include_plotlyjs=False), title
 
 
-def fnt_zabbix_stats_servers(zapi, command, args):
+def fnt_zabbix_servers_table(zapi, command, args):
 
     """ Generate Visual table for report """
     if args == "new":
@@ -418,8 +434,7 @@ def fnt_zabbix_stats_servers(zapi, command, args):
         servers = [vs["visibleId"] for vs in fnt_virtualservers_new]
         # report_vars['new_servers'] = ', '.join(servers)
         # report_vars['new_servers_count'] = len(servers)
-
-        title = "Новые узлы"
+        title =  "Новые серверы" if len(servers) else "Новые серверы отсутствуют"
     elif args == "deleted":
         fnt_virtualservers_deleted, fnt_virtualservers_deleted_indexed = get_fnt_vs(
             command=command,
@@ -430,21 +445,20 @@ def fnt_zabbix_stats_servers(zapi, command, args):
         servers = [vs["visibleId"] for vs in fnt_virtualservers_deleted]
         # report_vars['deleted_servers'] = ', '.join(servers)
         # report_vars['deleted_servers_count'] = len(servers)
-
-        title = "Удалённые узлы"
+        title =  "Удалённые серверы" if len(servers) else "Удалённые серверы отсутствуют"
     elif args == "problems":
         servers = []
-        title = "Нет данных о проблемах"
+        title = "Проблемы отсутствуют"
 
     # servers = [f"<tr><td>Server {n}</td></tr>" for n in range(20)]
-    servers = [f"<tr><td>{server}</td></tr>" for server in servers]
+    # servers = [f"<tr><td>{server}</td></tr>" for server in servers]
     # text = title + '<p>' + "<p>".join(servers)
     text = f"<table>{''.join(servers)}</table>"
 
     # return text
-    servers=[]
+    # servers=[]
     trace = go.Table(
-        name="Статистика узлов СДИ Базис",
+        #name="Статистика серверов СДИ Базис",
         columnwidth=[11],
         header=dict(
             values=[""],
@@ -462,67 +476,114 @@ def fnt_zabbix_stats_servers(zapi, command, args):
     )
 
     layout = go.Layout(
-        title=dict(text=title, font=dict(size=18), xanchor="left", x=0, yanchor="top"),
-        height=70,
+        title=dict(
+            #text=title, 
+            font=dict(size=18), xanchor="left", x=0, yanchor="top"),
+        # height=70,
         # height=242,
+        height= 130 + 20 * len(servers),
         width=350,
-        margin=dict(l=30, r=30, t=60, b=50),
+        margin=dict(l=30, r=30, t=0, b=50),
         # autosize=True
     )
 
     fig = go.Figure(data=[trace], layout=layout)
     fig.layout["template"]["data"]["table"][0]["header"]["fill"]["color"] = "rgba(0,0,0,0)"
 
-    # plotly.offline.plot(data, filename="generate_table.html")
-    return plotly.offline.plot(fig, output_type="div", include_plotlyjs=False) + text
+    # plotly.offline.plot(fig, filename="generate_fnt_zabbix_stats_servers.html")
+    plotly.io.write_image(fig, file=f"reports/fnt_zabbix_stats_servers_{args}.png", format='png', scale=2)
+    return plotly.offline.plot(fig, output_type="div", include_plotlyjs=False), title # + text
 
 
-def generate_report(zapi, command, args, mode, noproblemsdata=False, filename=None):
+def generate_report(zapi, command, dataframe, mode, noproblemsdata=False, filename=None, args=None):
 
     """ Generate report to be emailed out """
     env = Environment(loader=PackageLoader("vfzsync", "templates"))
-    comprise_template = env.get_template("problem_report.html")
+    comprise_template = env.get_template(REPORT_TEMPLATE)
 
-    if mode == "problemsactive":
-        title = "Отчёт об активных проблемах"
-    else:
-        title = "Отчёт о закрытых за 7д. проблемах"
-    
+    title = 'Отчёт о мониторинге серверов'
+    stat1, header1 = fnt_zabbix_stats(zapi, command, dataframe)
+    stat2, header2 = fnt_zabbix_servers_table(zapi, command, "new")
+    stat3, header3 = fnt_zabbix_servers_table(zapi, command, "deleted")
+
     data = {
-            "fnt_zabbix_stats": fnt_zabbix_stats(zapi, command, args),
-            "fnt_zabbix_stats_new": fnt_zabbix_stats_servers(zapi, command, "new"),
-            "fnt_zabbix_stats_deleted": fnt_zabbix_stats_servers(zapi, command, "deleted"),
-            "title": title
+            "title": title,
+            "fnt_zabbix_stats": stat1,
+            "fnt_zabbix_stats_header": header1,
+            "fnt_zabbix_stats_new": stat2,
+            "fnt_zabbix_stats_new_header": header2,
+            "fnt_zabbix_stats_deleted": stat3,
+            "fnt_zabbix_stats_deleted_header": header3,
         }
     if not noproblemsdata:
+        stat4, header4 = zbx_problems_by_severity(dataframe)
+        stat5, header5 = zbx_problems_per_day(dataframe, mode)
+        stat6, header6 = zbx_problems_table(dataframe, mode)
         data = {
             **data,
-            "percentage_pie": problems_by_severity(args),
-            "frequency_line": time_and_frequency(args),
-            "per_day_bar": problems_per_day(args, mode),
-            "generated_table": generate_table(args, mode)
+            "percentage_pie": stat4,
+            "percentage_pie_header": header4,
+            # "frequency_line": time_and_frequency(dataframe),
+            "per_day_bar": stat5,
+            "per_day_bar_header": header5,
+            "generated_table": stat6,
+            "generated_table_header": header6,
+
         }
     else:
+        stat7, header7 =  fnt_zabbix_servers_table(zapi, command, "problems")
         data = {**data,
-            "generated_table": fnt_zabbix_stats_servers(zapi, command, "problems")}
-
-    compiled_report = comprise_template.render(page=data)
+            "generated_table": stat7,
+            "generated_table_header": header7,
+            }
 
     if filename:
-        with open(filename, "w") as file:
+        compiled_report = comprise_template.render(page=data)
+        with open(f"reports/{filename}", "w") as file:
             file.write(compiled_report)
+        
+    if args == 'email':
+        data = {
+            "title": title,
+            "fnt_zabbix_stats":         '<img src="cid:fnt_zabbix_stats.png"/>',
+            "fnt_zabbix_stats_new":     '<img src="cid:fnt_zabbix_stats_servers_new.png"/>',
+            "fnt_zabbix_stats_deleted": '<img src="cid:fnt_zabbix_stats_servers_deleted.png"/>',
+            "fnt_zabbix_stats_header": header1,
+            "fnt_zabbix_stats_new_header": header2,
+            "fnt_zabbix_stats_deleted_header": header3,
+
+        }
+        if not noproblemsdata:
+            data = {
+                **data,
+                "percentage_pie":   '<img src="cid:problems_by_severity.png"/>',
+                # "frequency_line":   '<img src="cid:frequency_line.png"/>',
+                "per_day_bar":      '<img src="cid:per_day_bar.png"/>',
+                "generated_table":  '<img src="cid:generated_table.png"/>',
+                "percentage_pie_header": header4,
+                "per_day_bar_header": header5,
+                "generated_table_header": header6,
+
+            }
+        else:
+            data = {**data,
+                "generated_table": '<img src="cid:fnt_zabbix_stats_servers_problems.png"/>',
+                "generated_table_header": header7,
+            }
+
+    compiled_report = comprise_template.render(page=data)
 
     return compiled_report
 
 
-def create_report(zapi, command, mode):
+def create_report(zapi, command, mode, args=None):
     """ Applicaton Logic """
     data = retrieve_data(zapi=zapi, mode=mode)
     if not data.empty:
         dataframe = clean_data(data, mode)
-        report = generate_report(zapi, command, dataframe, mode, noproblemsdata=False)
+        report = generate_report(zapi, command, dataframe, mode, noproblemsdata=False, filename='problems_report.html', args=args)
     else:
-        report = generate_report(zapi, command, data, mode, noproblemsdata=True)
+        report = generate_report(zapi, command, data, mode, noproblemsdata=True, filename='problems_report.html', args=args)
     return report
 
 
