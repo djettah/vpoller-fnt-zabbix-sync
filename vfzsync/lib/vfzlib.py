@@ -801,9 +801,10 @@ class VFZSync:
         fnt_virtualservers, fnt_virtualservers_indexed = get_fnt_vs(
             command=self._command, index="id", related_entities=False, restrictions=FNT_VS_FILTER_FNT_ZABBIX
         )
-        if not fnt_virtualservers:
-            logger.warn(f"No VirtualServers received from FNT, aborting sync.")
-            return False
+        #todo #bug broken for initial sync
+        # if not fnt_virtualservers:
+        #     logger.warn(f"No VirtualServers received from FNT, aborting sync.")
+        #     return False
 
         zabbix_hostgroup_id = get_zabbix_hostgroupid_by_name(
             self._zapi, vfzsync.CONFIG["zabbix"]["hostgroup"]
