@@ -32,7 +32,9 @@ general:
 
 vpoller:
   endpoint: ${VPOLLER_ENDPOINT}
-  vc_host: ${VPOLLER_VC_HOST}
+  vc_hosts: 
+    - ${VPOLLER_VC_HOST_01}
+    - ${VPOLLER_VC_HOST_02}
   retries: ${VPOLLER_RETRIES}
   timeout: ${VPOLLER_TIMEOUT}
 

@@ -90,8 +90,8 @@ def send_email(subject, sender, recipients, text_body=None, html_body=None, atta
         msg.body = text_body
     if html_body:
         msg.html = html_body
-    with app.open_resource(f'../reports/problems_report.html') as fp:
-        msg.attach("problem_report.html", "text/html", fp.read())
+    # with app.open_resource(f'../reports/problems_report.html') as fp:
+    #     msg.attach("problem_report.html", "text/html", fp.read())
     for r, d, f in os.walk('reports'):
         for file in f:
             if file.endswith('.png'):

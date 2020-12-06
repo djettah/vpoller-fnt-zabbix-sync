@@ -92,42 +92,23 @@ VPOLLER_VM_ATTRIBUTES = [
 VPOLLER_VM_NET_ATTRIBUTES = ["ipAddress"]
 VPOLLER_VM_DISK_ATTRIBUTES = ["diskPath", "capacity", "freeSpace", "freeSpacePercentage"]
 
-FNT_VS_FILTER_VPOLLER_FNT = {
-    # "cUuid": {"operator": "like", "value": "*-*-*-*-*"},
-    "datasource": {"operator": "=", "value": vfzsync.CONFIG["vpoller"]["vc_host"]},
-    # "cCSdiDelConfirmed": {"operator": "like", "value": "N"},
-    # "cSdiDeleted": {"operator": "like", "value": "N"},
-}
+VC_HOSTS = [vc for vc in vfzsync.CONFIG["vpoller"]["vc_hosts"] if vc]
 
-FNT_VS_FILTER_FNT_ZABBIX = {
-    # "cUuid": {"operator": "like", "value": "*-*-*-*-*"},
-    "datasource": {"operator": "=", "value": vfzsync.CONFIG["vpoller"]["vc_host"]},
-    "cSdiNewServer": {"operator": "like", "value": "N"},
-}
+
+
+
 
 FNT_VS_FILTER_FNT_NEW_SERVERS = {
     # "cUuid": {"operator": "like", "value": "*-*-*-*-*"},
-    "datasource": {"operator": "=", "value": vfzsync.CONFIG["vpoller"]["vc_host"]},
+    # "datasource": {"operator": "=", "value": vfzsync.CONFIG["vpoller"]["vc_host"]},
     "cSdiNewServer": {"operator": "like", "value": "Y"},
 }
 
 FNT_VS_FILTER_FNT_DELETED_UNCONFIRMED_SERVERS = {
     # "cUuid": {"operator": "like", "value": "*-*-*-*-*"},
-    "datasource": {"operator": "=", "value": vfzsync.CONFIG["vpoller"]["vc_host"]},
+    # "datasource": {"operator": "=", "value": vfzsync.CONFIG["vpoller"]["vc_host"]},
     "cSdiDeleted": {"operator": "like", "value": "Y"},
     "cCSdiDelConfirmed": {"operator": "like", "value": "N"},
-}
-
-FNT_VS_FILTER_FNT_UPDATE = {
-    # "cUuid": {"operator": "like", "value": "*-*-*-*-*"},
-    "datasource": {"operator": "=", "value": vfzsync.CONFIG["vpoller"]["vc_host"]},
-    # "cSdiNewServer": {"operator": "like", "value": "N"},
-    "cSdiDeleted": {"operator": "like", "value": "N"},
-}
-
-FNT_VS_FILTER_STATS = {
-    # "cUuid": {"operator": "like", "value": "*-*-*-*-*"},
-    "datasource": {"operator": "=", "value": vfzsync.CONFIG["vpoller"]["vc_host"]},
 }
 
 FNT_VS_ATTRIBUTES = [
@@ -192,65 +173,68 @@ def test_config():
     print("test_config")
 
 
-def get_vpoller_vms(vpoller):
-    vpoller_resp = vpoller.run(method="vm.discover", vc_host=vfzsync.CONFIG["vpoller"]["vc_host"])
-    vm_names = [vm["name"] for vm in vpoller_resp]
+def get_vpoller_vms(vpoller, vcenters):
+    #done #foreach
     vms = []
+    for vc_host in vcenters:
+        vpoller_resp = vpoller.run(method="vm.discover", vc_host=vc_host)
+        vm_names = [vm["name"] for vm in vpoller_resp]
 
-    # progress counter
-    counter = ProgressCounter(len(vm_names), 10, 60)
+        # progress counter
+        counter = ProgressCounter(len(vm_names), 10, 60)
 
-    for vm_name in vm_names:
-        progress = counter.iterate()
-        if progress:
-            logger.info(f"{sys._getframe().f_code.co_name} progress: {counter.progress}%")
+        for vm_name in vm_names:
+            progress = counter.iterate()
+            if progress:
+                logger.info(f"{sys._getframe().f_code.co_name} progress: {counter.progress}%")
 
-        try:
-            vm = vpoller.run(
-                method="vm.get",
-                vc_host=vfzsync.CONFIG["vpoller"]["vc_host"],
-                name=vm_name,
-                properties=VPOLLER_VM_ATTRIBUTES,
-            )[0]
-
-            nets = vpoller.run(
-                method="vm.guest.net.get",
-                vc_host=vfzsync.CONFIG["vpoller"]["vc_host"],
-                name=vm_name,
-                properties=VPOLLER_VM_NET_ATTRIBUTES,
-            )
-
-            disks_discovery = vpoller.run(
-                method="vm.disk.discover", vc_host=vfzsync.CONFIG["vpoller"]["vc_host"], name=vm_name
-            )
-
-            disks_indexed = {}
-            for disk_obj in disks_discovery[0]["disk"]:
-                disk = vpoller.run(
-                    method="vm.disk.get",
-                    vc_host=vfzsync.CONFIG["vpoller"]["vc_host"],
+            try:
+                vm = vpoller.run(
+                    method="vm.get",
+                    vc_host=vc_host,
                     name=vm_name,
-                    key=disk_obj["diskPath"],
-                    properties=VPOLLER_VM_DISK_ATTRIBUTES,
-                )[0]["disk"]
-                disks_indexed[disk_obj["diskPath"]] = disk
-            # disks_indexed = {disk['diskPath']:disk for disk in disks}
-            ips = flatten([net["ipAddress"] for net in nets["net"]])
-            ips_v4 = [ip for ip in ips if re.match(r"(\d+\.){3}\d+", ip)]
-            ips_indexed = {ip: {"ipAddress": ip} for ip in ips_v4}
-            vm["ipAddress"] = ips_indexed
-            vm["mountpoint"] = disks_indexed
-            vm["summary.storage.provisioned"] = (
-                vm["summary.storage.committed"] + vm["summary.storage.uncommitted"]
-            )
-            (vm["summary.storage.committed.gb"], vm["summary.storage.provisioned.gb"],) = list(
-                map(gib_round, [vm["summary.storage.committed"], vm["summary.storage.provisioned"]])
-            )
+                    properties=VPOLLER_VM_ATTRIBUTES,
+                )[0]
 
-            vms.append(vm)
-        except vPollerException:
-            logger.exception(f"Failed to get VM {vm_name} properties.")
-            raise VFZException("Failed to get VM data from vPoller")
+                nets = vpoller.run(
+                    method="vm.guest.net.get",
+                    vc_host=vc_host,
+                    name=vm_name,
+                    properties=VPOLLER_VM_NET_ATTRIBUTES,
+                )
+
+                disks_discovery = vpoller.run(
+                    method="vm.disk.discover", vc_host=vc_host, name=vm_name
+                )
+
+                disks_indexed = {}
+                for disk_obj in disks_discovery[0]["disk"]:
+                    disk = vpoller.run(
+                        method="vm.disk.get",
+                        vc_host=vc_host,
+                        name=vm_name,
+                        key=disk_obj["diskPath"],
+                        properties=VPOLLER_VM_DISK_ATTRIBUTES,
+                    )[0]["disk"]
+                    disks_indexed[disk_obj["diskPath"]] = disk
+                # disks_indexed = {disk['diskPath']:disk for disk in disks}
+                ips = flatten([net["ipAddress"] for net in nets["net"]])
+                ips_v4 = [ip for ip in ips if re.match(r"(\d+\.){3}\d+", ip)]
+                ips_indexed = {ip: {"ipAddress": ip} for ip in ips_v4}
+                vm["ipAddress"] = ips_indexed
+                vm["mountpoint"] = disks_indexed
+                vm["summary.storage.provisioned"] = (
+                    vm["summary.storage.committed"] + vm["summary.storage.uncommitted"]
+                )
+                (vm["summary.storage.committed.gb"], vm["summary.storage.provisioned.gb"],) = list(
+                    map(gib_round, [vm["summary.storage.committed"], vm["summary.storage.provisioned"]])
+                )
+                vm["vc_host"] = vc_host
+
+                vms.append(vm)
+            except vPollerException:
+                logger.exception(f"Failed to get VM {vm_name} properties.")
+                raise VFZException("Failed to get VM data from vPoller")
 
     vms_indexed = {vm["config.instanceUuid"]: vm for vm in vms}
 
@@ -258,11 +242,14 @@ def get_vpoller_vms(vpoller):
 
 
 #%%
-def get_fnt_vs(command, index, restrictions, related_entities=False):
-
-    virtualservers = command.get_entities(
-        "virtualServer", attributes=FNT_VS_ATTRIBUTES, restrictions=restrictions
-    )
+def get_fnt_vs(command, index, datasources, restrictions={}, related_entities=False):
+    #done #foreach
+    virtualservers = virtualservers_indexed = []
+    for vc_host in datasources:
+        restrictions["datasource"] = {"operator": "=", "value": vc_host}
+        virtualservers += command.get_entities(
+            "virtualServer", attributes=FNT_VS_ATTRIBUTES, restrictions=restrictions
+        )
     virtualservers_indexed = {vs[index]: vs for vs in virtualservers}
 
     # get linked entities
@@ -281,7 +268,7 @@ def get_fnt_vs(command, index, restrictions, related_entities=False):
 
 
 def sync_fnt_vs(command, vpoller_vms, fnt_virtualservers_indexed):
-
+    #done #foreach
     # progress counter
     counter = ProgressCounter(len(vpoller_vms), 25, 60)
 
@@ -302,7 +289,6 @@ def sync_fnt_vs(command, vpoller_vms, fnt_virtualservers_indexed):
         # populate extra vm attributes
         # vm["last_backup"] = "1970-01-01T00:00:00Z"  # default backup date
         vm["last_backup"] = None
-        vm["vc_host"] = vfzsync.CONFIG["vpoller"]["vc_host"]
         if m := re.match(r".*Time: \[(\d\d\.\d\d\.\d\d\d\d .*?)\].*", vm_annotation):  # noqa
             last_backup = m.group(1)
             last_backup = re.sub(
@@ -529,6 +515,7 @@ def cleanup_fnt_vs(command, fnt_virtualservers, vpoller_vms_indexed):
 
 
 def sync_zabbix_hosts(zapi, fnt_virtualservers, zabbix_hosts_indexed_by_host):
+    #done #foreach
     zabbix_hostgroup_id = get_zabbix_hostgroupid_by_name(zapi, vfzsync.CONFIG["zabbix"]["hostgroup"])
     zabbix_template_id = get_zabbix_templateid_by_name(zapi, vfzsync.CONFIG["zabbix"]["template"])
     zabbix_proxy_id = get_zabbix_proxyid_by_name(zapi, vfzsync.CONFIG["zabbix"]["proxy"])
@@ -553,7 +540,7 @@ def sync_zabbix_hosts(zapi, fnt_virtualservers, zabbix_hosts_indexed_by_host):
         hostinterface_updateset = {}
         hostmacros_updateset = [
             {"macro": "{$SNMP_COMMUNITY}", "value": vs["cCommunityName"]},
-            {"macro": "{$VSPHERE.HOST}", "value": vfzsync.CONFIG["vpoller"]["vc_host"]},
+            {"macro": "{$VSPHERE.HOST}", "value": vs["datasource"]},
             {"macro": "{$HOST_PURPOSE}", "value": vs["cSdiPurpose"]},
         ]
         if not host:
@@ -634,7 +621,7 @@ def sync_zabbix_hosts(zapi, fnt_virtualservers, zabbix_hosts_indexed_by_host):
             if (
                 (host_community != vs["cCommunityName"])
                 or (host_purpose != vs["cSdiPurpose"])
-                or (host_vsphere_host != vfzsync.CONFIG["vpoller"]["vc_host"])
+                or (host_vsphere_host != vs["datasource"])
             ):
                 host_updateset["macros"] = hostmacros_updateset
 
@@ -661,8 +648,11 @@ def sync_zabbix_hosts(zapi, fnt_virtualservers, zabbix_hosts_indexed_by_host):
                     metric = ZabbixMetric(host["host"], f"trigger.status[{vs_flag}]", trigger_status)
                     host_senderset.append(metric)
 
-            if host_senderset:
-                result = zabbix_send(host_senderset)
+            try:
+                if host_senderset:
+                    result = zabbix_send(host_senderset)
+            except Exception as e:
+                logger.exception(f'Failed to send to Zabbix payload:\n{host_senderset}\n{str(e)}.')
 
             # disable host if no triggers enabled
             if host_status != host["status"]:
@@ -719,7 +709,7 @@ def zabbix_send(senderset):
 class VFZSync:
     def __init__(self, init_mode=["vpoller", "fnt", "zabbix"]):
         super().__init__()
-
+        #done #foreach
         # Initiate vPoller
         if "vpoller" in init_mode:
             try:
@@ -728,7 +718,9 @@ class VFZSync:
                     vpoller_retries=vfzsync.CONFIG["vpoller"]["retries"],
                     vpoller_timeout=vfzsync.CONFIG["vpoller"]["timeout"],
                 )
-                self._vpoller.run(method="about", vc_host=vfzsync.CONFIG["vpoller"]["vc_host"])
+                self._vcenters = [vc for vc in vfzsync.CONFIG["vpoller"]["vc_hosts"] if vc]
+                for vc_host in self._vcenters:
+                    self._vpoller.run(method="about", vc_host=vc_host)
             except vPollerException:
                 message = "vPoller initialization failed"
                 logger.exception(message)
@@ -776,14 +768,23 @@ class VFZSync:
         logger.info(f"{mode} sync completed.")
 
     def run_vpoller_fnt_sync(self):
+        #done #foreach
         """ vPoller -> FNT """
+        # FNT_VS_FILTER_VPOLLER_FNT = {
+        #     # "cUuid": {"operator": "like", "value": "*-*-*-*-*"},
+        #     "datasource": {"operator": "=", "value": vc_host,
+        #     # "cCSdiDelConfirmed": {"operator": "like", "value": "N"},
+        #     # "cSdiDeleted": {"operator": "like", "value": "N"},
+        #     }
+        # }
         try:
-            vpoller_vms, vpoller_vms_indexed = get_vpoller_vms(self._vpoller)
+            vpoller_vms, vpoller_vms_indexed = get_vpoller_vms(self._vpoller, self._vcenters)
+
             fnt_virtualservers, fnt_virtualservers_indexed = get_fnt_vs(
                 command=self._command,
                 index="cUuid",
                 related_entities=True,
-                restrictions=FNT_VS_FILTER_VPOLLER_FNT,
+                datasources=self._vcenters
             )
             if not vpoller_vms:
                 logger.warn(f"No VMs received from vpoller/vCenter, aborting sync.")
@@ -797,9 +798,13 @@ class VFZSync:
 
     def run_fnt_zabbix_sync(self):
         """ FNT -> Zabbix """
-
+        #done #foreach
+        FNT_VS_FILTER_FNT_ZABBIX = {
+            # "cUuid": {"operator": "like", "value": "*-*-*-*-*"},
+            "cSdiNewServer": {"operator": "like", "value": "N"},
+        }
         fnt_virtualservers, fnt_virtualservers_indexed = get_fnt_vs(
-            command=self._command, index="id", related_entities=False, restrictions=FNT_VS_FILTER_FNT_ZABBIX
+            command=self._command, index="id", related_entities=False, restrictions=FNT_VS_FILTER_FNT_ZABBIX, datasources=vfzsync.CONFIG["vpoller"]["vc_hosts"]
         )
         #todo #bug broken for initial sync
         # if not fnt_virtualservers:
@@ -825,8 +830,13 @@ class VFZSync:
         )
 
     def get_fnt_vs_stats(self):
+        #done #foreach
+        # FNT_VS_FILTER_STATS = {
+        #     # "cUuid": {"operator": "like", "value": "*-*-*-*-*"},
+        #     "datasource": {"operator": "=", "value": vfzsync.CONFIG["vpoller"]["vc_host"]},
+        # }
         fnt_virtualservers, fnt_virtualservers_indexed = get_fnt_vs(
-            command=self._command, index="id", related_entities=False, restrictions=FNT_VS_FILTER_STATS
+            command=self._command, index="id", related_entities=False, datasources=vfzsync.CONFIG["vpoller"]["vc_hosts"]
         )
         stats_new = len(
             [
@@ -846,16 +856,23 @@ class VFZSync:
         return stats
 
     def run_update(self, mode, args):
+        #done #foreach
         logger.info("Update started.")
 
         update_ips = bool(args.get("cManagementInterface", False))
         percent = int(args.get("percent", 0))
 
+        FNT_VS_FILTER_FNT_UPDATE = {
+            # "cUuid": {"operator": "like", "value": "*-*-*-*-*"},
+            # "cSdiNewServer": {"operator": "like", "value": "N"},
+            "cSdiDeleted": {"operator": "like", "value": "N"},
+        }
         fnt_virtualservers, fnt_virtualservers_indexed = get_fnt_vs(
             command=self._command,
             index="id",
             related_entities=update_ips,
             restrictions=FNT_VS_FILTER_FNT_UPDATE,
+            datasources=vfzsync.CONFIG["vpoller"]["vc_hosts"]
         )
         create_fake_percent = int(args.get("create_fake", 0))
         fnt_virtualservers_monitored = len([vs for vs in fnt_virtualservers if not yes_no(vs["cSdiDeleted"])])

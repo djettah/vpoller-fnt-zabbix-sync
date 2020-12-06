@@ -11,6 +11,7 @@ import time
 import pandas as pd
 import plotly
 import plotly.graph_objs as go
+import vfzsync
 
 from jinja2 import Environment, PackageLoader
 from .vfzlib import (
@@ -361,15 +362,16 @@ def zbx_problems_table(args, mode):
 
 def fnt_zabbix_stats(zapi, command, args):
     """ Generate Visual table for report """
-
+    #done #foreach
     fnt_virtualservers_new, fnt_virtualservers_new_indexed = get_fnt_vs(
-        command=command, index="id", related_entities=False, restrictions=FNT_VS_FILTER_FNT_NEW_SERVERS,
+        command=command, index="id", related_entities=False, restrictions=FNT_VS_FILTER_FNT_NEW_SERVERS, datasources=vfzsync.CONFIG["vpoller"]["vc_hosts"]
     )
     fnt_virtualservers_deleted, fnt_virtualservers_deleted_indexed = get_fnt_vs(
         command=command,
         index="id",
         related_entities=False,
         restrictions=FNT_VS_FILTER_FNT_DELETED_UNCONFIRMED_SERVERS,
+        datasources=vfzsync.CONFIG["vpoller"]["vc_hosts"]
     )
 
     stats = {}
@@ -424,11 +426,11 @@ def fnt_zabbix_stats(zapi, command, args):
 
 
 def fnt_zabbix_servers_table(zapi, command, args):
-
+    #done #foreach
     """ Generate Visual table for report """
     if args == "new":
         fnt_virtualservers_new, fnt_virtualservers_new_indexed = get_fnt_vs(
-            command=command, index="id", related_entities=False, restrictions=FNT_VS_FILTER_FNT_NEW_SERVERS
+            command=command, index="id", related_entities=False, restrictions=FNT_VS_FILTER_FNT_NEW_SERVERS, datasources=vfzsync.CONFIG["vpoller"]["vc_hosts"]
         )
         # report_vars = {}
         servers = [vs["visibleId"] for vs in fnt_virtualservers_new]
@@ -441,6 +443,7 @@ def fnt_zabbix_servers_table(zapi, command, args):
             index="id",
             related_entities=False,
             restrictions=FNT_VS_FILTER_FNT_DELETED_UNCONFIRMED_SERVERS,
+            datasources=vfzsync.CONFIG["vpoller"]["vc_hosts"]
         )
         servers = [vs["visibleId"] for vs in fnt_virtualservers_deleted]
         # report_vars['deleted_servers'] = ', '.join(servers)
