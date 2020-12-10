@@ -8,7 +8,9 @@ general:
 
 vpoller:
   endpoint: tcp://address:port
-  vc_host: address
+  vc_hosts: 
+    - 192.168.1.1
+    - 192.168.1.1
   retries: 5
   timeout: 20000
 
@@ -18,8 +20,9 @@ zabbix:
   password: password
   hostgroup: FNT Command
   template: Template FNT Virtual Server
-  proxy: zabbix-proxy-sqlite3
-
+  proxy: 
+    host: zabbix-proxy-sqlite3
+    port: 10051
 command:
   url: http://address:port
   username: username

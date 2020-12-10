@@ -35,6 +35,7 @@ vpoller:
   vc_hosts: 
     - ${VPOLLER_VC_HOST_01}
     - ${VPOLLER_VC_HOST_02}
+    - ${VPOLLER_VC_HOST_03}
   retries: ${VPOLLER_RETRIES}
   timeout: ${VPOLLER_TIMEOUT}
 
@@ -44,7 +45,9 @@ zabbix:
   password: ${ZABBIX_PASSWORD}
   hostgroup: ${ZABBIX_HOSTGROUP}
   template: ${ZABBIX_TEMPLATE}
-  proxy: ${ZABBIX_PROXY}
+  proxy: 
+    host: ${ZABBIX_PROXY_HOST}
+    port: ${ZABBIX_PROXY_PORT}
 
 command:
   url: ${COMMAND_URL}

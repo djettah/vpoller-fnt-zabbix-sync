@@ -7,6 +7,7 @@ def get_zabbix_hosts(zapi, zabbix_hostgroup_id):
         selectInterfaces=["ip", "interfaceid", "dns", "type"],
         groupids=zabbix_hostgroup_id,
         selectMacros="extend",
+        selectInventory=["name", "location"]
     )
     hosts_indexed_by_host = {host["host"]: host for host in hosts}
     return hosts, hosts_indexed_by_host

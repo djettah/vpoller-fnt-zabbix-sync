@@ -20,7 +20,18 @@ from .vfzlib import (
     FNT_VS_FILTER_FNT_DELETED_UNCONFIRMED_SERVERS,
     FNT_ZABBIX_FLAG_TRIGGERS
 )
-
+from debugtoolkit.debugtoolkit import (
+    init_logger,
+    crash_me,
+    debug_exception,
+    deflogger,
+    deflogger_module,
+    dry_request,
+    handle_exception,
+    measure,
+    measure_class,
+    first
+)
 import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -55,12 +66,17 @@ def retrieve_data(zapi, mode="problemsactive"):
         triggers = zapi.trigger.get(
             skipDependent=1,
             filter={"value": 1, "status": 0},
-            selectHosts=["name"],
+            selectHosts=["name","location"],
+            selectInventory=["location"],
             output=["description", "priority"],
             selectLastEvent=["clock", "severity"],
             monitored=True,
         )
-
+        for trigger in triggers:
+            hostid = first(trigger['hosts'])['hostid']
+            host = first(zapi.host.get(filter={'hostid': hostid}, output= ["hostid"], selectInventory=["location"]))
+            vc_host = host['inventory']['location'] if host['inventory'] else 'vfzsync'
+            trigger['vc_host'] = vc_host
         for trigger in triggers:
             trigger["name"] = trigger["description"]
             trigger["clock"] = trigger["lastEvent"]["clock"]
@@ -284,7 +300,7 @@ def zbx_problems_per_day(args, mode):
     fig = go.Figure(data=data, layout=layout)
 
     # plotly.offline.plot(fig, filename='problems_per_day.html')
-    plotly.io.write_image(fig, file="reports/per_day_bar.png", format='png', scale=2, width=1000)
+    plotly.io.write_image(fig, file="reports/per_day_bar.png", format='png', scale=2, width=1400)
     return plotly.offline.plot(fig, include_plotlyjs=False, output_type="div"), title
 
 
@@ -294,7 +310,7 @@ def zbx_problems_table(args, mode):
     if mode != "problemsactive":
         dataframe = pd.DataFrame(
             # args[["eventid", "clock", "rts_clock", "severity", "hosts", "name"]] #fix
-            args[["eventid", "clock", "severity", "hosts", "name"]]
+            args[["eventid", "clock", "severity", "hosts", "name", "vc_host"]]
         )
         title = "Закрытые за неделю проблемы"
     else:
@@ -303,7 +319,7 @@ def zbx_problems_table(args, mode):
 
     dataframe["color"] = dataframe["severity"].map(SEVERITY_COLOR_MAP)
 
-    cols_to_show = ["clock", "severity", "hosts", "name"]
+    cols_to_show = ["clock", "severity", "vc_host", "hosts", "name"]
     fill_color = []
     n = len(dataframe)
     for col in cols_to_show:
@@ -315,10 +331,10 @@ def zbx_problems_table(args, mode):
     trace = go.Table(
         # name="Отчёт о проблемах",
         # columnwidth=[6, 11, 9, 8, 26, 40], #fix
-        columnwidth=[13, 7, 18, 40],
+        columnwidth=[11, 6, 13, 18, 40],
         header=dict(
             # values=["Event ID", "Timestamp", "Resolution Time", "Severity", "Host", "Event",], #fix
-            values=["Время", "Важность", "Узел", "Проблема"],
+            values=["Время", "Важность", "Источник", "Узел", "Проблема"],
             line=dict(width=2, color="pink"),
             fill=dict(color="rgb(255, 113, 113)"),
             align=["center"],
@@ -356,19 +372,20 @@ def zbx_problems_table(args, mode):
     fig = go.Figure(data=[trace], layout=layout)
 
     # plotly.offline.plot(data, filename="generate_table.html")
-    plotly.io.write_image(fig, file="reports/generated_table.png", format='png', scale=2, width=1000)
+    plotly.io.write_image(fig, file="reports/generated_table.png", format='png', scale=2, width=1400)
     return plotly.offline.plot(fig, output_type="div", include_plotlyjs=False), title
 
 
 def fnt_zabbix_stats(zapi, command, args):
     """ Generate Visual table for report """
     #done #foreach
+    index = ("id",)
     fnt_virtualservers_new, fnt_virtualservers_new_indexed = get_fnt_vs(
-        command=command, index="id", related_entities=False, restrictions=FNT_VS_FILTER_FNT_NEW_SERVERS, datasources=vfzsync.CONFIG["vpoller"]["vc_hosts"]
+        command=command, indexes=index, related_entities=False, restrictions=FNT_VS_FILTER_FNT_NEW_SERVERS, datasources=vfzsync.CONFIG["vpoller"]["vc_hosts"]
     )
     fnt_virtualservers_deleted, fnt_virtualservers_deleted_indexed = get_fnt_vs(
         command=command,
-        index="id",
+        indexes=index,
         related_entities=False,
         restrictions=FNT_VS_FILTER_FNT_DELETED_UNCONFIRMED_SERVERS,
         datasources=vfzsync.CONFIG["vpoller"]["vc_hosts"]
@@ -428,9 +445,10 @@ def fnt_zabbix_stats(zapi, command, args):
 def fnt_zabbix_servers_table(zapi, command, args):
     #done #foreach
     """ Generate Visual table for report """
+    index = ("id",)
     if args == "new":
         fnt_virtualservers_new, fnt_virtualservers_new_indexed = get_fnt_vs(
-            command=command, index="id", related_entities=False, restrictions=FNT_VS_FILTER_FNT_NEW_SERVERS, datasources=vfzsync.CONFIG["vpoller"]["vc_hosts"]
+            command=command, indexes=index, related_entities=False, restrictions=FNT_VS_FILTER_FNT_NEW_SERVERS, datasources=vfzsync.CONFIG["vpoller"]["vc_hosts"]
         )
         # report_vars = {}
         servers = [vs["visibleId"] for vs in fnt_virtualservers_new]
@@ -440,7 +458,7 @@ def fnt_zabbix_servers_table(zapi, command, args):
     elif args == "deleted":
         fnt_virtualservers_deleted, fnt_virtualservers_deleted_indexed = get_fnt_vs(
             command=command,
-            index="id",
+            indexes=index,
             related_entities=False,
             restrictions=FNT_VS_FILTER_FNT_DELETED_UNCONFIRMED_SERVERS,
             datasources=vfzsync.CONFIG["vpoller"]["vc_hosts"]

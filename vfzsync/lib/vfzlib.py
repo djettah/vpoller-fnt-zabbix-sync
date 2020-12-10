@@ -25,6 +25,7 @@ from debugtoolkit.debugtoolkit import (
     handle_exception,
     measure,
     measure_class,
+    first
 )
 from .extrafuncs import *
 from .fntapi import *
@@ -232,25 +233,29 @@ def get_vpoller_vms(vpoller, vcenters):
                 vm["vc_host"] = vc_host
 
                 vms.append(vm)
+
             except vPollerException:
                 logger.exception(f"Failed to get VM {vm_name} properties.")
                 raise VFZException("Failed to get VM data from vPoller")
 
-    vms_indexed = {vm["config.instanceUuid"]: vm for vm in vms}
-
+    vms_indexed = {(vm["vc_host"], vm["config.instanceUuid"]): vm for vm in vms}
     return vms, vms_indexed
 
 
 #%%
-def get_fnt_vs(command, index, datasources, restrictions={}, related_entities=False):
+def get_fnt_vs(command, indexes, datasources, restrictions={}, related_entities=False):
     #done #foreach
-    virtualservers = virtualservers_indexed = []
+    virtualservers = []
+    virtualservers_indexed = {}
     for vc_host in datasources:
-        restrictions["datasource"] = {"operator": "=", "value": vc_host}
+        restrictions_ds = restrictions.copy()
+        restrictions_ds["datasource"] = {"operator": "=", "value": vc_host}
         virtualservers += command.get_entities(
-            "virtualServer", attributes=FNT_VS_ATTRIBUTES, restrictions=restrictions
+            "virtualServer", attributes=FNT_VS_ATTRIBUTES, restrictions=restrictions_ds
         )
-    virtualservers_indexed = {vs[index]: vs for vs in virtualservers}
+    for vs in virtualservers:
+        vs_index = tuple(vs[index] for index in indexes)
+        virtualservers_indexed[vs_index] = vs
 
     # get linked entities
     if related_entities:
@@ -279,10 +284,12 @@ def sync_fnt_vs(command, vpoller_vms, fnt_virtualservers_indexed):
             logger.info(f"{sys._getframe().f_code.co_name} progress: {counter.progress}%")
 
         vm_uuid = vm["config.instanceUuid"]
+        vm_vc_host = vm["vc_host"]
         vm_annotation = vm["config.annotation"]
 
         # do we have a matching vs?
-        vs = fnt_virtualservers_indexed.get(vm_uuid, {})
+        vm_index = (vm_vc_host, vm_uuid)
+        vs = fnt_virtualservers_indexed.get(vm_index, {})
 
         vs_attr_updateset = {}
 
@@ -485,9 +492,11 @@ def create_update_fnt_vs(command, vs_attr_updateset, vs=None):
 def cleanup_fnt_vs(command, fnt_virtualservers, vpoller_vms_indexed):
     for vs in fnt_virtualservers:
         vs_uuid = vs["cUuid"]
+        vs_datasource = vs["datasource"]
+        vm_index = (vs_datasource, vs_uuid)
         vs_attr_updateset = {}
         # safety: do not sync if no vms received
-        if vpoller_vms_indexed and not vpoller_vms_indexed.get(vs_uuid) and not yes_no(vs["cSdiDeleted"]):
+        if vpoller_vms_indexed and not vpoller_vms_indexed.get(vm_index) and not yes_no(vs["cSdiDeleted"]):
             vs_attr_updateset = {"cSdiDeleted": "Y", "cSdiNewServer": "N", "cCSdiDelConfirmed": "N"}
             try:
                 sync_fnt_vs_entities(command, vs=vs, vm={}, vs_attr_updateset=vs_attr_updateset)
@@ -518,7 +527,7 @@ def sync_zabbix_hosts(zapi, fnt_virtualservers, zabbix_hosts_indexed_by_host):
     #done #foreach
     zabbix_hostgroup_id = get_zabbix_hostgroupid_by_name(zapi, vfzsync.CONFIG["zabbix"]["hostgroup"])
     zabbix_template_id = get_zabbix_templateid_by_name(zapi, vfzsync.CONFIG["zabbix"]["template"])
-    zabbix_proxy_id = get_zabbix_proxyid_by_name(zapi, vfzsync.CONFIG["zabbix"]["proxy"])
+    zabbix_proxy_id = get_zabbix_proxyid_by_name(zapi, vfzsync.CONFIG["zabbix"]["proxy"]["host"])
 
     hostids = [zabbix_hosts_indexed_by_host[hostname]["hostid"] for hostname in zabbix_hosts_indexed_by_host]
     triggers, triggers_indexed_by_hostids = get_zabbix_triggers(
@@ -542,7 +551,11 @@ def sync_zabbix_hosts(zapi, fnt_virtualservers, zabbix_hosts_indexed_by_host):
             {"macro": "{$SNMP_COMMUNITY}", "value": vs["cCommunityName"]},
             {"macro": "{$VSPHERE.HOST}", "value": vs["datasource"]},
             {"macro": "{$HOST_PURPOSE}", "value": vs["cSdiPurpose"]},
+            {"macro": "{$VS_VISIBLE_ID}", "value": vs["visibleId"]}
         ]
+        vs_id = first(re.findall(r"\d+", vs["id"]))
+        host_name_new = f'{vs["visibleId"]} [#{vs_id}]'
+
         if not host:
             # create host
             if (
@@ -553,7 +566,7 @@ def sync_zabbix_hosts(zapi, fnt_virtualservers, zabbix_hosts_indexed_by_host):
                 # name = f'{vs["visibleId"]} [{vs["id"]}]',
                 host_updateset = {
                     "host": vs["id"],
-                    "name": vs["visibleId"],
+                    "name": host_name_new,
                     "groups": [{"groupid": zabbix_hostgroup_id}],
                     "interfaces": [
                         {
@@ -569,6 +582,11 @@ def sync_zabbix_hosts(zapi, fnt_virtualservers, zabbix_hosts_indexed_by_host):
                     "macros": hostmacros_updateset,
                     "templates": [{"templateid": zabbix_template_id}],
                     "proxy_hostid": str(zabbix_proxy_id),
+                    "inventory_mode": 0,
+                    "inventory": {
+                        "location": vs["datasource"],
+                        "name": vs["visibleId"]
+                    }
                 }
 
                 try:
@@ -593,6 +611,7 @@ def sync_zabbix_hosts(zapi, fnt_virtualservers, zabbix_hosts_indexed_by_host):
             host_purpose = host_macros.get("{$HOST_PURPOSE}", "")
             host_community = host_macros.get("{$SNMP_COMMUNITY}", "public")
             host_vsphere_host = host_macros.get("{$VSPHERE.HOST}", "")
+            host_visible_id = host_macros.get("{$VS_VISIBLE_ID}", "")
 
             host_interface = host["interfaces"][0]
             host_interface_id = host_interface["interfaceid"]
@@ -611,9 +630,12 @@ def sync_zabbix_hosts(zapi, fnt_virtualservers, zabbix_hosts_indexed_by_host):
                     if not host_items_indexed_by_app.get(app["name"]):
                         host_items_indexed_by_app[app["name"]] = []
                     host_items_indexed_by_app[app["name"]].append(item)
-
-            if host_name != vs["visibleId"]:
-                host_updateset["name"] = vs["visibleId"]
+            
+            if host_name != host_name_new:
+                host_updateset["name"] = host_name_new
+            if host['inventory']['name'] != vs["visibleId"]:
+                host_updateset['inventory'] = {}
+                host_updateset['inventory']["name"] = vs["visibleId"]
 
             if vs["cManagementInterface"] and host_ip != vs["cManagementInterface"]:
                 hostinterface_updateset = {"interfaceid": host_interface_id, "ip": vs["cManagementInterface"]}
@@ -622,6 +644,7 @@ def sync_zabbix_hosts(zapi, fnt_virtualservers, zabbix_hosts_indexed_by_host):
                 (host_community != vs["cCommunityName"])
                 or (host_purpose != vs["cSdiPurpose"])
                 or (host_vsphere_host != vs["datasource"])
+                or (host_visible_id != vs["visibleId"])
             ):
                 host_updateset["macros"] = hostmacros_updateset
 
@@ -686,24 +709,28 @@ def sync_zabbix_hosts(zapi, fnt_virtualservers, zabbix_hosts_indexed_by_host):
 def cleanup_zabbix_hosts(zapi, zabbix_hosts, fnt_virtualservers_indexed):
     for host in zabbix_hosts:
         host_id = host["hostid"]
-        vs = fnt_virtualservers_indexed.get(host["host"], {})
+        host_index = (host["host"],)
+        vs = fnt_virtualservers_indexed.get(host_index, {})
         # don't delete if no data from FNT
         if fnt_virtualservers_indexed and (yes_no(vs.get("cSdiDeleted", "N")) or not vs):
             try:
                 zapi.host.delete(host_id)
             except ZabbixAPIException:
-                logger.exception(f'Failed to delete Zabbix host {host["host"]}.')
+                logger.exception(f'Failed to delete Zabbix host {host["name"]}.')
             else:
-                logger.info(f'Deleted Zabbix host {host["host"]}.')
+                logger.info(f'Deleted Zabbix host {host["name"]}.')
 
 
 def zabbix_send(senderset):
-    sender = ZabbixSender(zabbix_server=vfzsync.CONFIG["zabbix"]["proxy"], zabbix_port=10051)
-    result = sender.send(senderset)
-    if result.failed > 0:
-        logger.debug(f"Send started with args: {senderset} and has failed: {result}")
-
-    return result
+    sender = ZabbixSender(zabbix_server=vfzsync.CONFIG["zabbix"]["proxy"]["host"], zabbix_port=vfzsync.CONFIG["zabbix"]["proxy"]["port"])
+    try:
+        result = sender.send(senderset)
+    except Exception as e:
+        logger.exception(str(e))
+    else:
+        if result.failed > 0:
+            logger.debug(f"Send started with args: {senderset} and has failed: {result}")
+        return result
 
 
 class VFZSync:
@@ -782,7 +809,7 @@ class VFZSync:
 
             fnt_virtualservers, fnt_virtualservers_indexed = get_fnt_vs(
                 command=self._command,
-                index="cUuid",
+                indexes=("datasource", "cUuid"),
                 related_entities=True,
                 datasources=self._vcenters
             )
@@ -803,13 +830,14 @@ class VFZSync:
             # "cUuid": {"operator": "like", "value": "*-*-*-*-*"},
             "cSdiNewServer": {"operator": "like", "value": "N"},
         }
+        index = ("id",)
         fnt_virtualservers, fnt_virtualservers_indexed = get_fnt_vs(
-            command=self._command, index="id", related_entities=False, restrictions=FNT_VS_FILTER_FNT_ZABBIX, datasources=vfzsync.CONFIG["vpoller"]["vc_hosts"]
+            command=self._command, indexes=index, related_entities=False, restrictions=FNT_VS_FILTER_FNT_ZABBIX, datasources=vfzsync.CONFIG["vpoller"]["vc_hosts"]
         )
-        #todo #bug broken for initial sync
-        # if not fnt_virtualservers:
-        #     logger.warn(f"No VirtualServers received from FNT, aborting sync.")
-        #     return False
+        #todo #bug? broken for initial sync?
+        if not fnt_virtualservers:
+            logger.warn(f"No VirtualServers received from FNT, aborting sync.")
+            return False
 
         zabbix_hostgroup_id = get_zabbix_hostgroupid_by_name(
             self._zapi, vfzsync.CONFIG["zabbix"]["hostgroup"]
@@ -835,8 +863,9 @@ class VFZSync:
         #     # "cUuid": {"operator": "like", "value": "*-*-*-*-*"},
         #     "datasource": {"operator": "=", "value": vfzsync.CONFIG["vpoller"]["vc_host"]},
         # }
+        index = ("id",)
         fnt_virtualservers, fnt_virtualservers_indexed = get_fnt_vs(
-            command=self._command, index="id", related_entities=False, datasources=vfzsync.CONFIG["vpoller"]["vc_hosts"]
+            command=self._command, indexes=index, related_entities=False, datasources=vfzsync.CONFIG["vpoller"]["vc_hosts"]
         )
         stats_new = len(
             [
@@ -867,9 +896,10 @@ class VFZSync:
             # "cSdiNewServer": {"operator": "like", "value": "N"},
             "cSdiDeleted": {"operator": "like", "value": "N"},
         }
+        index = ("id",)
         fnt_virtualservers, fnt_virtualservers_indexed = get_fnt_vs(
             command=self._command,
-            index="id",
+            indexes=index,
             related_entities=update_ips,
             restrictions=FNT_VS_FILTER_FNT_UPDATE,
             datasources=vfzsync.CONFIG["vpoller"]["vc_hosts"]
@@ -938,6 +968,7 @@ class VFZSync:
             host_senderset.append(metric)
 
         if mode == "groupupdate":
+            #todo #bug?
             logger.debug(f"Send started in {mode} mode.")
 
             zabbix_hostgroup_id = get_zabbix_hostgroupid_by_name(
@@ -955,7 +986,7 @@ class VFZSync:
             hostids = [
                 zabbix_hosts_indexed_by_host[hostname]["hostid"] for hostname in zabbix_hosts_indexed_by_host
             ]
-            zabbix_proxy_id = get_zabbix_proxyid_by_name(self._zapi, vfzsync.CONFIG["zabbix"]["proxy"])
+            zabbix_proxy_id = get_zabbix_proxyid_by_name(self._zapi, vfzsync.CONFIG["zabbix"]["proxy"]["host"])
 
             triggers, triggers_indexed_by_hostids = get_zabbix_triggers(
                 zapi=self._zapi, mode="groupupdate", groupids=zabbix_hostgroup_id
