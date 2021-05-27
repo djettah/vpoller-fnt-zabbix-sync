@@ -285,7 +285,7 @@ def sync_fnt_vs(command, vpoller_vms, fnt_virtualservers_indexed):
 
         vm_uuid = vm["config.instanceUuid"]
         vm_vc_host = vm["vc_host"]
-        vm_annotation = vm["config.annotation"]
+        vm_annotation = vm.get("config.annotation", "")   # may be missing for unknown reason
 
         # do we have a matching vs?
         vm_index = (vm_vc_host, vm_uuid)
@@ -296,8 +296,8 @@ def sync_fnt_vs(command, vpoller_vms, fnt_virtualservers_indexed):
         # populate extra vm attributes
         # vm["last_backup"] = "1970-01-01T00:00:00Z"  # default backup date
         vm["last_backup"] = None
-        if m := re.match(r".*Time: \[(\d\d\.\d\d\.\d\d\d\d .*?)\].*", vm_annotation):  # noqa
-            last_backup = m.group(1)
+        if m := re.match(r".*(Last backup|Time): \[(\d\d\.\d\d\.\d\d\d\d .*?)\].*", vm_annotation):  # noqa
+            last_backup = m.group(2)
             last_backup = re.sub(
                 r"(\d{1,2})\.(\d{1,2})\.(\d{4}) (\d{1,2}:\d{1,2}:\d{1,2})",
                 f'\\3-\\2-\\1T\\4{( time.strftime("%z", time.localtime() ) )}',
@@ -316,7 +316,8 @@ def sync_fnt_vs(command, vpoller_vms, fnt_virtualservers_indexed):
         for tm_entry in VPOLLER_FNT_TRANSFORM_MAP:
             vm_attr, vs_attr = tm_entry
             if normalize_none(vm.get(vm_attr, "")) != normalize_none(vs.get(vs_attr)):
-                vs_attr_updateset[vs_attr] = normalize_none(vm.get(vm_attr, ""))
+                # vs_attr_updateset[vs_attr] = normalize_none(vm.get(vm_attr, ""))
+                vs_attr_updateset[vs_attr] = vm.get(vm_attr, None)
 
         if vs:
             # undelete vs if discovered again
